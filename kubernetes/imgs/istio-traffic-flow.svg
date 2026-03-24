@@ -1,0 +1,167 @@
+<svg width="800" height="900" viewBox="0 0 800 900" xmlns="http://www.w3.org/2000/svg" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#555" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#C45A1A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#6B3FA0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="900" fill="#F7F6F2" rx="0"/>
+
+  <!-- ============================================================ -->
+  <!-- TITLE -->
+  <!-- ============================================================ -->
+  <text x="400" y="44" text-anchor="middle" font-size="18" font-weight="700" fill="#1A1A18" letter-spacing="-0.3">Pod 間通信フロー — Istio Ambient Mesh</text>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 1: Waypointなし -->
+  <!-- ============================================================ -->
+  <text x="40" y="82" font-size="12" font-weight="600" fill="#888780" letter-spacing="1.5">PATTERN 1</text>
+  <text x="40" y="102" font-size="15" font-weight="700" fill="#1A1A18">Waypoint なし — L4 のみ（mTLS・暗号化）</text>
+
+  <!-- Node A box -->
+  <rect x="40" y="120" width="320" height="240" rx="12" fill="#EEECEA" stroke="#C8C5BC" stroke-width="1"/>
+  <text x="200" y="144" text-anchor="middle" font-size="11" font-weight="600" fill="#5F5E5A" letter-spacing="0.8">NODE A</text>
+
+  <!-- Node B box -->
+  <rect x="440" y="120" width="320" height="240" rx="12" fill="#EEECEA" stroke="#C8C5BC" stroke-width="1"/>
+  <text x="600" y="144" text-anchor="middle" font-size="11" font-weight="600" fill="#5F5E5A" letter-spacing="0.8">NODE B</text>
+
+  <!-- Pod A -->
+  <rect x="70" y="158" width="120" height="52" rx="8" fill="#D8F2E8" stroke="#2D8A63" stroke-width="1"/>
+  <text x="130" y="180" text-anchor="middle" font-size="13" font-weight="700" fill="#085041">Pod A</text>
+  <text x="130" y="198" text-anchor="middle" font-size="10" fill="#0F6E56">送信元アプリ</text>
+
+  <!-- Pod B -->
+  <rect x="470" y="158" width="120" height="52" rx="8" fill="#D8F2E8" stroke="#2D8A63" stroke-width="1"/>
+  <text x="530" y="180" text-anchor="middle" font-size="13" font-weight="700" fill="#085041">Pod B</text>
+  <text x="530" y="198" text-anchor="middle" font-size="10" fill="#0F6E56">宛先アプリ</text>
+
+  <!-- ZTunnel A -->
+  <rect x="60" y="278" width="280" height="64" rx="8" fill="#FDE8DF" stroke="#C45A1A" stroke-width="1"/>
+  <text x="200" y="302" text-anchor="middle" font-size="13" font-weight="700" fill="#712B13">ZTunnel</text>
+  <text x="200" y="320" text-anchor="middle" font-size="10" fill="#993C1D">DaemonSet — Node に 1 つ常駐</text>
+  <text x="200" y="334" text-anchor="middle" font-size="10" fill="#993C1D">mTLS 確立・暗号化・送信</text>
+
+  <!-- ZTunnel B -->
+  <rect x="460" y="278" width="280" height="64" rx="8" fill="#FDE8DF" stroke="#C45A1A" stroke-width="1"/>
+  <text x="600" y="302" text-anchor="middle" font-size="13" font-weight="700" fill="#712B13">ZTunnel</text>
+  <text x="600" y="320" text-anchor="middle" font-size="10" fill="#993C1D">DaemonSet — Node に 1 つ常駐</text>
+  <text x="600" y="334" text-anchor="middle" font-size="10" fill="#993C1D">復号・Workload ID 検証・転送</text>
+
+  <!-- Arrow: Pod A → ZTunnel A -->
+  <line x1="130" y1="210" x2="130" y2="278" stroke="#888" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+  <text x="138" y="250" font-size="10" fill="#888780">① iptables redirect</text>
+
+  <!-- Arrow: ZTunnel A → ZTunnel B (HBONE) -->
+  <path d="M340 310 L460 310" fill="none" stroke="#C45A1A" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
+  <rect x="356" y="292" width="88" height="18" rx="4" fill="#C45A1A"/>
+  <text x="400" y="304" text-anchor="middle" font-size="10" font-weight="700" fill="#fff" letter-spacing="0.5">HBONE / mTLS</text>
+  <text x="400" y="328" text-anchor="middle" font-size="10" fill="#888780">② Node 間を暗号化して転送</text>
+
+  <!-- Arrow: ZTunnel B → Pod B -->
+  <line x1="530" y1="278" x2="530" y2="210" stroke="#888" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+  <text x="538" y="250" font-size="10" fill="#888780">③ 復号・転送</text>
+
+  <!-- ============================================================ -->
+  <!-- SECTION 2: Waypointあり -->
+  <!-- ============================================================ -->
+  <text x="40" y="398" font-size="12" font-weight="600" fill="#888780" letter-spacing="1.5">PATTERN 2</text>
+  <text x="40" y="418" font-size="15" font-weight="700" fill="#1A1A18">Waypoint あり — L7 ポリシーが必要な場合</text>
+
+  <!-- Node A box -->
+  <rect x="40" y="436" width="320" height="340" rx="12" fill="#EEECEA" stroke="#C8C5BC" stroke-width="1"/>
+  <text x="200" y="460" text-anchor="middle" font-size="11" font-weight="600" fill="#5F5E5A" letter-spacing="0.8">NODE A</text>
+
+  <!-- Node B box -->
+  <rect x="440" y="436" width="320" height="340" rx="12" fill="#EEECEA" stroke="#C8C5BC" stroke-width="1"/>
+  <text x="600" y="460" text-anchor="middle" font-size="11" font-weight="600" fill="#5F5E5A" letter-spacing="0.8">NODE B</text>
+
+  <!-- Pod A -->
+  <rect x="70" y="472" width="120" height="52" rx="8" fill="#D8F2E8" stroke="#2D8A63" stroke-width="1"/>
+  <text x="130" y="494" text-anchor="middle" font-size="13" font-weight="700" fill="#085041">Pod A</text>
+  <text x="130" y="512" text-anchor="middle" font-size="10" fill="#0F6E56">送信元アプリ</text>
+
+  <!-- Waypoint Pod (on Node A) -->
+  <rect x="210" y="472" width="130" height="68" rx="8" fill="#EDE9FC" stroke="#7F77DD" stroke-width="1"/>
+  <text x="275" y="494" text-anchor="middle" font-size="13" font-weight="700" fill="#3C3489">Waypoint</text>
+  <text x="275" y="510" text-anchor="middle" font-size="10" fill="#534AB7">普通の Pod として稼働</text>
+  <text x="275" y="524" text-anchor="middle" font-size="10" fill="#534AB7">kube-scheduler が配置</text>
+  <text x="275" y="538" text-anchor="middle" font-size="10" fill="#534AB7">L7 ポリシー処理</text>
+
+  <!-- Pod B -->
+  <rect x="470" y="472" width="120" height="52" rx="8" fill="#D8F2E8" stroke="#2D8A63" stroke-width="1"/>
+  <text x="530" y="494" text-anchor="middle" font-size="13" font-weight="700" fill="#085041">Pod B</text>
+  <text x="530" y="512" text-anchor="middle" font-size="10" fill="#0F6E56">宛先アプリ</text>
+
+  <!-- ZTunnel A (Pattern 2) -->
+  <rect x="60" y="578" width="280" height="64" rx="8" fill="#FDE8DF" stroke="#C45A1A" stroke-width="1"/>
+  <text x="200" y="602" text-anchor="middle" font-size="13" font-weight="700" fill="#712B13">ZTunnel</text>
+  <text x="200" y="620" text-anchor="middle" font-size="10" fill="#993C1D">DaemonSet — Node に 1 つ常駐</text>
+  <text x="200" y="634" text-anchor="middle" font-size="10" fill="#993C1D">暗号化・Waypoint へ転送</text>
+
+  <!-- ZTunnel B (Pattern 2) -->
+  <rect x="460" y="578" width="280" height="64" rx="8" fill="#FDE8DF" stroke="#C45A1A" stroke-width="1"/>
+  <text x="600" y="602" text-anchor="middle" font-size="13" font-weight="700" fill="#712B13">ZTunnel</text>
+  <text x="600" y="620" text-anchor="middle" font-size="10" fill="#993C1D">DaemonSet — Node に 1 つ常駐</text>
+  <text x="600" y="634" text-anchor="middle" font-size="10" fill="#993C1D">復号・Pod B へ転送</text>
+
+  <!-- Arrows Pattern 2 -->
+
+  <!-- ① Pod A → ZTunnel A -->
+  <line x1="130" y1="524" x2="130" y2="578" stroke="#888" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+  <text x="16" y="558" font-size="10" fill="#888780">① iptables</text>
+
+  <!-- ② ZTunnel A → Waypoint (via HBONE, internal) -->
+  <path d="M200 578 L200 560 L275 560 L275 540" fill="none" stroke="#7F77DD" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#arrow-purple)"/>
+  <text x="208" y="556" font-size="10" fill="#6B3FA0">② HBONE → Waypoint</text>
+
+  <!-- ③ Waypoint → ZTunnel A again (re-enters as dest) -->
+  <path d="M275 540 L275 560 L310 560 L310 578" fill="none" stroke="#C45A1A" stroke-width="2" marker-end="url(#arrow-orange)"/>
+
+  <!-- ④ ZTunnel A → ZTunnel B (HBONE) -->
+  <path d="M340 610 L460 610" fill="none" stroke="#C45A1A" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
+  <rect x="356" y="592" width="88" height="18" rx="4" fill="#C45A1A"/>
+  <text x="400" y="604" text-anchor="middle" font-size="10" font-weight="700" fill="#fff" letter-spacing="0.5">HBONE / mTLS</text>
+  <text x="400" y="628" text-anchor="middle" font-size="10" fill="#888780">③ Node 間を暗号化して転送</text>
+
+  <!-- ⑤ ZTunnel B → Pod B -->
+  <line x1="530" y1="578" x2="530" y2="524" stroke="#888" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+  <text x="538" y="556" font-size="10" fill="#888780">④ 復号・転送</text>
+
+  <!-- Waypoint note -->
+  <rect x="60" y="660" width="680" height="96" rx="8" fill="#fff" stroke="#D3D1C7" stroke-width="1"/>
+  <text x="80" y="682" font-size="11" font-weight="700" fill="#3C3489">Waypoint のポイント</text>
+  <text x="80" y="702" font-size="11" fill="#444441">• 普通の Pod → kubectl get pod で確認できる。kube-scheduler が任意の Node に配置。</text>
+  <text x="80" y="720" font-size="11" fill="#444441">• ZTunnel は DaemonSet → 全 Node に固定で 1 つずつ常駐。</text>
+  <text x="80" y="738" font-size="11" fill="#444441">• L7 が不要なサービスは Waypoint を立てない。ZTunnel のみでオーバーヘッドを抑える。</text>
+
+  <!-- ============================================================ -->
+  <!-- LEGEND -->
+  <!-- ============================================================ -->
+  <rect x="40" y="776" width="720" height="104" rx="10" fill="#fff" stroke="#D3D1C7" stroke-width="1"/>
+  <text x="60" y="798" font-size="11" font-weight="700" fill="#1A1A18">凡例</text>
+
+  <!-- Legend items -->
+  <line x1="60" y1="820" x2="110" y2="820" stroke="#888" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#arrow)"/>
+  <text x="118" y="824" font-size="11" fill="#444441">iptables redirect（アプリ透過）</text>
+
+  <line x1="320" y1="820" x2="370" y2="820" stroke="#C45A1A" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
+  <text x="378" y="824" font-size="11" fill="#444441">HBONE トンネル（暗号化済み）</text>
+
+  <line x1="60" y1="852" x2="110" y2="852" stroke="#7F77DD" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#arrow-purple)"/>
+  <text x="118" y="856" font-size="11" fill="#444441">ZTunnel → Waypoint（Node 内 HBONE）</text>
+
+  <rect x="320" y="842" width="14" height="14" rx="3" fill="#FDE8DF" stroke="#C45A1A" stroke-width="1"/>
+  <text x="342" y="856" font-size="11" fill="#444441">ZTunnel（DaemonSet / Node 固定）</text>
+
+  <rect x="560" y="842" width="14" height="14" rx="3" fill="#EDE9FC" stroke="#7F77DD" stroke-width="1"/>
+  <text x="582" y="856" font-size="11" fill="#444441">Waypoint（Deployment / Pod）</text>
+
+</svg>

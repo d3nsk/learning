@@ -1,0 +1,85 @@
+<svg width="680" viewBox="0 0 680 620" xmlns="http://www.w3.org/2000/svg" font-family="Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="680" height="620" fill="#ffffff"/>
+
+  <!-- Client -->
+  <rect x="220" y="20" width="240" height="52" rx="8" fill="#f1efe8" stroke="#888780" stroke-width="0.5"/>
+  <text x="340" y="40" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#2c2c2a">クライアント</text>
+  <text x="340" y="58" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#5f5e5a">GET myservice.com/api HTTP/1.1</text>
+
+  <!-- Arrow: DNS -->
+  <line x1="340" y1="72" x2="340" y2="108" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="355" y="94" dominant-baseline="central" font-size="12" fill="#5f5e5a">DNS解決</text>
+
+  <!-- Cloud LB -->
+  <rect x="180" y="108" width="320" height="72" rx="8" fill="#e6f1fb" stroke="#185fa5" stroke-width="0.5"/>
+  <text x="20" y="124" font-size="11" font-weight="500" fill="#ffffff" text-anchor="middle" dominant-baseline="central">
+    <tspan> </tspan>
+  </text>
+  <!-- L4 badge -->
+  <rect x="20" y="108" width="50" height="28" rx="4" fill="#b5d4f4" stroke="#185fa5" stroke-width="0.5"/>
+  <text x="45" y="124" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0c447c">L4</text>
+
+  <text x="340" y="132" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#0c447c">クラウドLB</text>
+  <text x="340" y="152" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185fa5">L4（IP/Port）しか見ない</text>
+  <text x="340" y="168" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#185fa5">203.0.113.1:443 → Nginx Podへ転送</text>
+
+  <!-- Arrow -->
+  <line x1="340" y1="180" x2="340" y2="216" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="355" y="202" dominant-baseline="central" font-size="12" fill="#5f5e5a">L4転送</text>
+
+  <!-- Nginx Ingress -->
+  <rect x="20" y="216" width="50" height="28" rx="4" fill="#9fe1cb" stroke="#0f6e56" stroke-width="0.5"/>
+  <text x="45" y="230" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#085041">L7</text>
+
+  <rect x="140" y="216" width="400" height="88" rx="8" fill="#e1f5ee" stroke="#0f6e56" stroke-width="0.5"/>
+  <text x="340" y="242" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#085041">Nginx Ingress Controller Pod</text>
+  <text x="340" y="262" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#0f6e56">L7（HTTP）でHostヘッダー・Pathを見る</text>
+  <text x="220" y="284" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#0f6e56">Host: api.myservice.com → service-api</text>
+  <text x="460" y="284" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#0f6e56">Path: /api → service-api</text>
+
+  <!-- Three arrows to services -->
+  <line x1="230" y1="304" x2="160" y2="360" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="340" y1="304" x2="340" y2="360" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="450" y1="304" x2="520" y2="360" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Services -->
+  <rect x="80" y="360" width="160" height="52" rx="8" fill="#eeedfe" stroke="#534ab7" stroke-width="0.5"/>
+  <text x="160" y="381" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#3c3489">service-api</text>
+  <text x="160" y="399" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534ab7">/api のリクエスト</text>
+
+  <rect x="260" y="360" width="160" height="52" rx="8" fill="#eeedfe" stroke="#534ab7" stroke-width="0.5"/>
+  <text x="340" y="381" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#3c3489">service-web</text>
+  <text x="340" y="399" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534ab7">/web のリクエスト</text>
+
+  <rect x="440" y="360" width="160" height="52" rx="8" fill="#eeedfe" stroke="#534ab7" stroke-width="0.5"/>
+  <text x="520" y="381" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#3c3489">service-admin</text>
+  <text x="520" y="399" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534ab7">/admin のリクエスト</text>
+
+  <!-- Arrows to pods -->
+  <line x1="160" y1="412" x2="160" y2="460" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="340" y1="412" x2="340" y2="460" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="520" y1="412" x2="520" y2="460" stroke="#888780" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Pods -->
+  <rect x="96" y="460" width="128" height="44" rx="8" fill="#faece7" stroke="#993c1d" stroke-width="0.5"/>
+  <text x="160" y="485" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#712b13">api Pod群</text>
+
+  <rect x="276" y="460" width="128" height="44" rx="8" fill="#faece7" stroke="#993c1d" stroke-width="0.5"/>
+  <text x="340" y="485" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#712b13">web Pod群</text>
+
+  <rect x="456" y="460" width="128" height="44" rx="8" fill="#faece7" stroke="#993c1d" stroke-width="0.5"/>
+  <text x="520" y="485" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#712b13">admin Pod群</text>
+
+  <!-- Virtual host note -->
+  <rect x="20" y="520" width="640" height="82" rx="8" fill="#fafaf8" stroke="#b4b2a9" stroke-width="0.5" stroke-dasharray="4 3"/>
+  <text x="340" y="543" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#2c2c2a">バーチャルホスト：複数ドメインが同じIPを指せる</text>
+  <text x="340" y="563" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5f5e5a">api.myservice.com / app.myservice.com / admin.myservice.com → すべて 203.0.113.1</text>
+  <text x="340" y="583" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#5f5e5a">L4（クラウドLB）はIPしか見ないので区別できない → L7（Nginx）がHostヘッダーを見て振り分ける</text>
+</svg>

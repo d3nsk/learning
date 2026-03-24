@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kubernetes Service — 通信の流れ</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --bg2: #181c27;
+    --bg3: #1e2333;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8eaf0;
+    --text2: #9099b0;
+    --text3: #5a6278;
+    --purple: #7c6ff7;
+    --purple-dim: rgba(124,111,247,0.15);
+    --teal: #2dd4a0;
+    --teal-dim: rgba(45,212,160,0.12);
+    --amber: #f5a623;
+    --amber-dim: rgba(245,166,35,0.12);
+    --coral: #f07057;
+    --coral-dim: rgba(240,112,87,0.12);
+    --blue: #5ba4f5;
+    --blue-dim: rgba(91,164,245,0.12);
+    --green: #4caf82;
+    --radius: 10px;
+    --font: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 60px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+
+  header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    margin-bottom: 6px;
+  }
+
+  header p {
+    font-size: 12px;
+    color: var(--text3);
+    letter-spacing: 0.04em;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 780px;
+  }
+
+  /* Step track */
+  .track {
+    display: flex;
+    align-items: center;
+    margin-bottom: 24px;
+    padding: 0 4px;
+  }
+
+  .track-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    flex-shrink: 0;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1.5px solid var(--border2);
+    background: var(--bg3);
+    color: var(--text3);
+    user-select: none;
+  }
+
+  .track-dot:hover { border-color: var(--purple); color: var(--purple); }
+  .track-dot.active { background: var(--purple); border-color: var(--purple); color: #fff; }
+  .track-dot.done { background: var(--teal-dim); border-color: var(--teal); color: var(--teal); }
+
+  .track-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    transition: background 0.3s;
+  }
+  .track-line.done { background: var(--teal); opacity: 0.4; }
+
+  /* Card */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .step-label {
+    font-size: 10px;
+    color: var(--purple);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .step-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+
+  .step-desc {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+
+  .card-diagram {
+    padding: 28px 24px;
+    background: var(--bg);
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card-diagram svg {
+    width: 100%;
+    max-width: 680px;
+    height: auto;
+    display: block;
+  }
+
+  .card-footer {
+    padding: 14px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .progress-text {
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 0.04em;
+  }
+
+  .nav-btns { display: flex; gap: 8px; }
+
+  .btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border2);
+    cursor: pointer;
+    background: var(--bg3);
+    color: var(--text2);
+    font-family: var(--font);
+    letter-spacing: 0.04em;
+    transition: all 0.15s;
+  }
+
+  .btn:hover:not(:disabled) { border-color: var(--text3); color: var(--text); }
+  .btn:disabled { opacity: 0.3; cursor: default; }
+
+  .btn.primary {
+    background: var(--purple-dim);
+    border-color: var(--purple);
+    color: var(--purple);
+  }
+  .btn.primary:hover:not(:disabled) {
+    background: var(--purple);
+    color: #fff;
+  }
+
+  /* SVG node styles */
+  .node-teal rect { fill: var(--teal-dim); stroke: var(--teal); stroke-width: 1; }
+  .node-teal .label { fill: var(--teal); font-size: 13px; font-weight: 600; font-family: var(--font); }
+  .node-teal .sub { fill: #2dd4a080; font-size: 11px; font-family: var(--font); }
+
+  .node-purple rect { fill: var(--purple-dim); stroke: var(--purple); stroke-width: 1; }
+  .node-purple .label { fill: var(--purple); font-size: 13px; font-weight: 600; font-family: var(--font); }
+  .node-purple .sub { fill: #7c6ff780; font-size: 11px; font-family: var(--font); }
+
+  .node-amber rect { fill: var(--amber-dim); stroke: var(--amber); stroke-width: 1.5; }
+  .node-amber .label { fill: var(--amber); font-size: 13px; font-weight: 600; font-family: var(--font); }
+  .node-amber .sub { fill: #f5a62380; font-size: 11px; font-family: var(--font); }
+
+  .node-coral rect { fill: var(--coral-dim); stroke: var(--coral); stroke-width: 1; }
+  .node-coral .label { fill: var(--coral); font-size: 13px; font-weight: 600; font-family: var(--font); }
+  .node-coral .sub { fill: #f0705780; font-size: 11px; font-family: var(--font); }
+
+  .node-gray rect { fill: rgba(255,255,255,0.03); stroke: rgba(255,255,255,0.12); stroke-width: 1; }
+  .node-gray .label { fill: #9099b0; font-size: 13px; font-weight: 600; font-family: var(--font); }
+  .node-gray .sub { fill: #5a627880; font-size: 11px; font-family: var(--font); }
+
+  .arr-blue { stroke: var(--blue); stroke-width: 1.4; fill: none; }
+  .arr-amber { stroke: var(--amber); stroke-width: 1.4; fill: none; }
+  .arr-green { stroke: var(--green); stroke-width: 1.4; fill: none; }
+  .arr-coral { stroke: var(--coral); stroke-width: 1; fill: none; stroke-dasharray: 5 3; }
+  .arr-dim { stroke: rgba(255,255,255,0.15); stroke-width: 1; fill: none; }
+
+  .arr-label { font-size: 10px; font-family: var(--font); letter-spacing: 0.03em; }
+  .arr-label-blue { fill: var(--blue); }
+  .arr-label-amber { fill: var(--amber); }
+  .arr-label-green { fill: var(--green); }
+  .arr-label-coral { fill: var(--coral); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Kubernetes Service — 通信の流れ</h1>
+  <p>Pod が別の Service に接続するまでに何が起きているか</p>
+</header>
+
+<div class="container">
+  <div class="track" id="track"></div>
+  <div class="card">
+    <div class="card-header">
+      <div class="step-label" id="step-label"></div>
+      <div class="step-title" id="step-title"></div>
+      <div class="step-desc" id="step-desc"></div>
+    </div>
+    <div class="card-diagram" id="diagram"></div>
+    <div class="card-footer">
+      <span class="progress-text" id="progress"></span>
+      <div class="nav-btns">
+        <button class="btn" id="btn-prev" onclick="move(-1)">← 戻る</button>
+        <button class="btn primary" id="btn-next" onclick="move(1)">次へ →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEFS = `<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>`;
+
+function node(cls, x, y, w, h, title, sub) {
+  const rx = 8;
+  const ty = sub ? y + h/2 - 10 : y + h/2;
+  const sy = y + h/2 + 10;
+  return `<g class="${cls}">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}"/>
+    <text class="label" x="${x+w/2}" y="${ty}" text-anchor="middle" dominant-baseline="central">${title}</text>
+    ${sub ? `<text class="sub" x="${x+w/2}" y="${sy}" text-anchor="middle" dominant-baseline="central">${sub}</text>` : ''}
+  </g>`;
+}
+
+function arrow(cls, x1, y1, x2, y2) {
+  return `<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-end="url(#arr)" marker-start="none"/>`;
+}
+
+function arrowPath(cls, d) {
+  return `<path class="${cls}" d="${d}" marker-end="url(#arr)"/>`;
+}
+
+function label(cls, x, y, txt, anchor='middle') {
+  return `<text class="arr-label ${cls}" x="${x}" y="${y}" text-anchor="${anchor}">${txt}</text>`;
+}
+
+const steps = [
+  {
+    label: 'STEP 01 / 05',
+    title: 'Pod A が CoreDNS に問い合わせる',
+    desc: 'Pod A は "service-b" の IP を知らない。まず CoreDNS に「service-b の IP は？」と問い合わせる。この時点では実 Pod の IP は教えてもらえない。',
+    svg: () => `<svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg">${DEFS}
+      ${node('node-teal',   40, 72, 160, 56, 'Pod A', '10.244.1.10')}
+      ${node('node-purple', 260, 72, 180, 56, 'CoreDNS', 'クラスタ内 DNS')}
+      ${node('node-gray',   500, 72, 150, 56, 'Service B', '?')}
+      ${arrow('arr-blue', 202, 100, 258, 100)}
+      ${label('arr-label-blue', 230, 92, 'service-b の IP は？')}
+    </svg>`
+  },
+  {
+    label: 'STEP 02 / 05',
+    title: 'CoreDNS が ClusterIP を返す',
+    desc: '返ってくるのは ClusterIP (10.96.0.100)。これはどの NIC にも bind されていない仮想 IP。実際の Pod IP は教えない。',
+    svg: () => `<svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg">${DEFS}
+      ${node('node-teal',   40, 72, 160, 56, 'Pod A', '10.244.1.10')}
+      ${node('node-purple', 260, 72, 180, 56, 'CoreDNS', 'クラスタ内 DNS')}
+      ${node('node-amber',  490, 60, 170, 80, 'ClusterIP', '10.96.0.100 (仮想 IP)')}
+      ${arrow('arr-amber', 258, 100, 202, 100)}
+      ${label('arr-label-amber', 230, 92, '10.96.0.100 を返す')}
+      <line class="arr-dim" x1="440" y1="100" x2="488" y2="100" stroke-dasharray="4 3"/>
+    </svg>`
+  },
+  {
+    label: 'STEP 03 / 05',
+    title: 'Pod A が ClusterIP 宛にパケットを送出',
+    desc: 'Pod A は 10.96.0.100:80 宛てにパケットを投げる。この時点では実 Pod の IP を知らない。パケットはカーネルの iptables に捕まえられる。',
+    svg: () => `<svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg">${DEFS}
+      ${node('node-teal',   40,  72, 150, 56, 'Pod A', '10.244.1.10')}
+      ${node('node-purple', 255, 60, 190, 80, 'iptables', 'kube-proxy が書いたルール')}
+      ${node('node-gray',   510, 72, 140, 56, '...', '宛先未確定')}
+      ${arrow('arr-blue', 192, 100, 253, 100)}
+      ${label('arr-label-blue', 222, 90, 'dst: 10.96.0.100:80')}
+      <line class="arr-dim" x1="447" y1="100" x2="508" y2="100" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+    </svg>`
+  },
+  {
+    label: 'STEP 04 / 05',
+    title: 'iptables が DNAT でパケットの宛先を書き換える',
+    desc: 'カーネルが dst を 10.96.0.100 → 10.244.2.20 に書き換える (DNAT)。Pod A はこれを知らない。Pod A から見ると 10.96.0.100 に送ったままに見える。',
+    svg: () => `<svg viewBox="0 0 680 220" xmlns="http://www.w3.org/2000/svg">${DEFS}
+      ${node('node-purple', 30,  80, 180, 60, 'iptables', 'DNAT 実行中')}
+      ${node('node-amber',  265, 68, 190, 84, '書き換え後', 'dst: 10.244.2.20:80')}
+      ${node('node-teal',   510, 80, 140, 56, 'Pod B', '10.244.2.20')}
+      ${arrow('arr-amber', 212, 110, 263, 110)}
+      ${label('arr-label-amber', 238, 102, 'DNAT')}
+      ${arrow('arr-green', 457, 110, 508, 110)}
+      ${label('arr-label-green', 482, 102, '転送')}
+    </svg>`
+  },
+  {
+    label: 'STEP 05 / 05',
+    title: 'Pod B に到達。kube-proxy は変化を監視し続ける',
+    desc: 'Pod B が死んで IP が変わっても、kube-proxy が API Server の EndpointSlice を watch して iptables を全書き換えする。次のパケットから自動で新しい Pod に流れる。',
+    svg: () => `<svg viewBox="0 0 680 240" xmlns="http://www.w3.org/2000/svg">${DEFS}
+      ${node('node-coral',  240, 20, 200, 50, 'API Server', 'EndpointSlice 管理')}
+      ${node('node-amber',  30,  130, 170, 56, 'kube-proxy', 'ルール書き込み係')}
+      ${node('node-purple', 265, 130, 170, 56, 'iptables', 'カーネルが転送')}
+      ${node('node-teal',   500, 130, 150, 56, 'Pod B', '到達!')}
+      ${arrowPath('arr-coral', 'M340 72 L340 128')}
+      ${label('arr-label-coral', 358, 104, 'watch')}
+      ${arrowPath('arr-coral', 'M200 158 L263 158')}
+      ${label('arr-label-coral', 230, 149, '全書き換え')}
+      ${arrow('arr-green', 437, 158, 498, 158)}
+      ${label('arr-label-green', 467, 149, '転送')}
+    </svg>`
+  }
+];
+
+let cur = 0;
+
+function render() {
+  const s = steps[cur];
+  document.getElementById('step-label').textContent = s.label;
+  document.getElementById('step-title').textContent = s.title;
+  document.getElementById('step-desc').textContent = s.desc;
+  document.getElementById('diagram').innerHTML = s.svg();
+  document.getElementById('progress').textContent = `${cur + 1} / ${steps.length}`;
+
+  const track = document.getElementById('track');
+  track.innerHTML = '';
+  steps.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'track-dot' + (i < cur ? ' done' : i === cur ? ' active' : '');
+    dot.textContent = i + 1;
+    dot.onclick = () => { cur = i; render(); };
+    track.appendChild(dot);
+    if (i < steps.length - 1) {
+      const line = document.createElement('div');
+      line.className = 'track-line' + (i < cur ? ' done' : '');
+      track.appendChild(line);
+    }
+  });
+
+  document.getElementById('btn-prev').disabled = cur === 0;
+  const nextBtn = document.getElementById('btn-next');
+  nextBtn.disabled = cur === steps.length - 1;
+  nextBtn.textContent = cur === steps.length - 2 ? '最後へ →' : cur === steps.length - 1 ? '完了' : '次へ →';
+}
+
+function move(d) {
+  cur = Math.max(0, Math.min(steps.length - 1, cur + d));
+  render();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') move(1);
+  if (e.key === 'ArrowLeft') move(-1);
+});
+
+render();
+</script>
+</body>
+</html>
