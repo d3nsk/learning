@@ -1,0 +1,1146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>01. 環境構築 — Kubernetes with kind</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    /* ===========================================
+       VIEWPORT FITTING: MANDATORY BASE STYLES
+       =========================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow-x: hidden;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    html {
+      scroll-snap-type: y mandatory;
+      scroll-behavior: smooth;
+    }
+    .slide {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      scroll-snap-align: start;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .slide-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      max-height: 100%;
+      overflow: hidden;
+      padding: var(--slide-padding);
+    }
+
+    /* ===========================================
+       TERMINAL GREEN PRESET
+       =========================================== */
+    :root {
+      --bg:        #0d1117;
+      --bg2:       #161b22;
+      --bg3:       #21262d;
+      --green:     #39d353;
+      --green-dim: #26a641;
+      --green-glow:#39d35355;
+      --cyan:      #79c0ff;
+      --yellow:    #e3b341;
+      --red:       #f85149;
+      --text:      #e6edf3;
+      --text-dim:  #8b949e;
+      --border:    #30363d;
+
+      --title-size: clamp(1.5rem, 5vw, 3.5rem);
+      --h2-size:    clamp(1.1rem, 3vw, 2rem);
+      --h3-size:    clamp(0.9rem, 2.2vw, 1.5rem);
+      --body-size:  clamp(0.72rem, 1.4vw, 1.05rem);
+      --small-size: clamp(0.62rem, 1vw, 0.85rem);
+      --code-size:  clamp(0.68rem, 1.25vw, 0.95rem);
+
+      --slide-padding: clamp(1.5rem, 5vw, 5rem);
+      --content-gap:   clamp(0.6rem, 2vw, 2rem);
+      --element-gap:   clamp(0.3rem, 1vw, 1rem);
+    }
+
+    body { background: var(--bg); color: var(--text); }
+
+    /* Scan lines overlay */
+    .slide::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.07) 2px,
+        rgba(0,0,0,0.07) 4px
+      );
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Grid decoration */
+    .slide::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(57,211,83,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(57,211,83,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .slide-content { z-index: 1; }
+
+    /* slide number tag */
+    .slide-tag {
+      position: absolute;
+      top: clamp(0.75rem, 2vh, 1.5rem);
+      right: clamp(1rem, 3vw, 2rem);
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      z-index: 20;
+      letter-spacing: 0.05em;
+    }
+    .slide-tag span { color: var(--green); }
+
+    /* nav dots */
+    #nav {
+      position: fixed;
+      right: clamp(0.5rem, 1.5vw, 1.25rem);
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(0.3rem, 0.8vh, 0.6rem);
+      z-index: 100;
+    }
+    .dot {
+      width: clamp(5px, 0.5vw, 8px);
+      height: clamp(5px, 0.5vw, 8px);
+      border-radius: 50%;
+      background: var(--border);
+      cursor: pointer;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .dot.active {
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green-glow);
+    }
+
+    /* keyboard hint */
+    .kbd-hint {
+      position: fixed;
+      bottom: clamp(0.5rem, 2vh, 1.25rem);
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      z-index: 100;
+      letter-spacing: 0.05em;
+    }
+
+    /* ===========================================
+       ANIMATIONS
+       =========================================== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .reveal.in { opacity: 1; transform: none; }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    .reveal-delay-4 { transition-delay: 0.4s; }
+    .reveal-delay-5 { transition-delay: 0.5s; }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+    @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0 12px var(--green-glow); }
+      50%       { box-shadow: 0 0 24px var(--green), 0 0 40px var(--green-glow); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes lineGrow {
+      from { width: 0; }
+      to   { width: 100%; }
+    }
+    @keyframes nodeAppear {
+      from { opacity: 0; transform: scale(0.8); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* ===========================================
+       SHARED COMPONENTS
+       =========================================== */
+    .terminal-win {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: clamp(0.3rem, 1vh, 0.6rem) clamp(0.6rem, 1.5vw, 1rem);
+      background: var(--bg3);
+      border-bottom: 1px solid var(--border);
+    }
+    .tbar-dot {
+      width: clamp(8px, 0.8vw, 12px);
+      height: clamp(8px, 0.8vw, 12px);
+      border-radius: 50%;
+    }
+    .tbar-dot:nth-child(1) { background: #ff5f57; }
+    .tbar-dot:nth-child(2) { background: #ffbd2e; }
+    .tbar-dot:nth-child(3) { background: #28ca41; }
+    .tbar-title {
+      margin-left: auto;
+      margin-right: auto;
+      font-size: var(--small-size);
+      color: var(--text-dim);
+    }
+    .terminal-body {
+      padding: clamp(0.6rem, 2vh, 1.25rem) clamp(0.8rem, 2vw, 1.5rem);
+      font-size: var(--code-size);
+      line-height: 1.7;
+    }
+    .prompt::before {
+      content: '$ ';
+      color: var(--green);
+      font-weight: 600;
+    }
+    .comment { color: var(--text-dim); }
+    .out { color: var(--cyan); }
+    .hl  { color: var(--green); font-weight: 600; }
+    .kw  { color: var(--yellow); }
+    .cursor {
+      display: inline-block;
+      width: 0.55em;
+      height: 1.1em;
+      background: var(--green);
+      vertical-align: text-bottom;
+      margin-left: 2px;
+      animation: blink 1.2s step-end infinite;
+    }
+
+    /* ===========================================
+       SLIDE 1: TITLE
+       =========================================== */
+    #s1 { background: var(--bg); }
+
+    .title-box {
+      display: flex;
+      flex-direction: column;
+      gap: var(--content-gap);
+      max-width: min(90vw, 900px);
+    }
+    .slide-label {
+      font-size: var(--small-size);
+      color: var(--green);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    .main-title {
+      font-size: var(--title-size);
+      font-weight: 700;
+      line-height: 1.1;
+      color: var(--text);
+    }
+    .main-title em {
+      font-style: normal;
+      color: var(--green);
+      text-shadow: 0 0 20px var(--green-glow);
+    }
+    .subtitle {
+      font-size: var(--h3-size);
+      color: var(--text-dim);
+      font-weight: 300;
+    }
+    .title-sep {
+      width: clamp(40px, 8vw, 80px);
+      height: 2px;
+      background: var(--green);
+      box-shadow: 0 0 8px var(--green-glow);
+      animation: lineGrow 0.8s ease forwards 0.5s;
+      width: 0;
+    }
+    .title-term {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4em;
+      font-size: var(--body-size);
+      padding: 0.35em 0.75em;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-dim);
+      width: fit-content;
+    }
+    .title-term .prompt-sym { color: var(--green); font-weight: 600; }
+
+    /* background glow orb */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .orb-green {
+      width: min(40vw, 400px);
+      height: min(40vw, 400px);
+      background: radial-gradient(circle, rgba(57,211,83,0.12) 0%, transparent 70%);
+      top: -10%;
+      right: -5%;
+    }
+    .orb-blue {
+      width: min(30vw, 300px);
+      height: min(30vw, 300px);
+      background: radial-gradient(circle, rgba(121,192,255,0.08) 0%, transparent 70%);
+      bottom: 5%;
+      left: 5%;
+    }
+
+    /* ===========================================
+       SLIDE 2: kind とは
+       =========================================== */
+    #s2 { background: var(--bg); }
+
+    .section-label {
+      font-size: var(--small-size);
+      color: var(--green);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: var(--element-gap);
+    }
+    .slide-heading {
+      font-size: var(--h2-size);
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: var(--content-gap);
+    }
+    .slide-heading em {
+      font-style: normal;
+      color: var(--green);
+    }
+
+    .feature-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: clamp(0.5rem, 1.5vw, 1rem);
+      max-width: min(90vw, 960px);
+    }
+    .fcard {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: clamp(0.75rem, 2vw, 1.25rem);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5em;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .fcard:hover {
+      border-color: var(--green-dim);
+      box-shadow: 0 0 16px rgba(57,211,83,0.1);
+    }
+    .fcard-icon {
+      font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+      margin-bottom: 0.2em;
+    }
+    .fcard-title {
+      font-size: var(--body-size);
+      font-weight: 600;
+      color: var(--green);
+    }
+    .fcard-body {
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    .prereq-box {
+      display: flex;
+      align-items: center;
+      gap: 0.6em;
+      padding: 0.6em 1em;
+      background: rgba(57,211,83,0.06);
+      border: 1px solid rgba(57,211,83,0.25);
+      border-radius: 4px;
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      margin-top: var(--content-gap);
+      width: fit-content;
+    }
+    .prereq-box strong { color: var(--green); }
+
+    /* ===========================================
+       SLIDE 3: クラスタとは（図解）
+       =========================================== */
+    #s3 { background: var(--bg); }
+
+    .diagram-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: clamp(1rem, 3vw, 3rem);
+      align-items: center;
+      max-width: min(92vw, 1100px);
+    }
+    .diagram-box {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: clamp(1rem, 2.5vw, 2rem);
+      position: relative;
+    }
+    .cluster-label {
+      position: absolute;
+      top: -0.6em;
+      left: 1em;
+      background: var(--bg2);
+      padding: 0 0.5em;
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      letter-spacing: 0.08em;
+    }
+    .cp-box {
+      background: rgba(57,211,83,0.08);
+      border: 1px solid var(--green-dim);
+      border-radius: 6px;
+      padding: clamp(0.5rem, 1.5vh, 0.9rem) clamp(0.75rem, 2vw, 1.25rem);
+      text-align: center;
+      margin-bottom: clamp(0.5rem, 2vh, 1rem);
+      animation: glow-pulse 3s ease-in-out infinite;
+    }
+    .cp-title {
+      font-size: var(--body-size);
+      font-weight: 600;
+      color: var(--green);
+    }
+    .cp-sub {
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      margin-top: 0.2em;
+    }
+
+    .arrow-down {
+      display: flex;
+      justify-content: center;
+      margin: clamp(0.25rem, 1vh, 0.5rem) 0;
+      color: var(--green-dim);
+      font-size: var(--small-size);
+    }
+
+    .nodes-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: clamp(0.3rem, 1vw, 0.6rem);
+    }
+    .node-box {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: clamp(0.4rem, 1vh, 0.7rem) 0.5rem;
+      text-align: center;
+      animation: nodeAppear 0.4s ease backwards;
+    }
+    .node-box:nth-child(1) { animation-delay: 0.4s; }
+    .node-box:nth-child(2) { animation-delay: 0.6s; }
+    .node-box:nth-child(3) { animation-delay: 0.8s; }
+    .node-title {
+      font-size: var(--small-size);
+      font-weight: 600;
+      color: var(--cyan);
+    }
+    .node-sub {
+      font-size: calc(var(--small-size) * 0.9);
+      color: var(--text-dim);
+      margin-top: 0.2em;
+    }
+    .pod-chips {
+      display: flex;
+      justify-content: center;
+      gap: 3px;
+      margin-top: 0.35em;
+    }
+    .pod-chip {
+      width: clamp(6px, 0.7vw, 10px);
+      height: clamp(6px, 0.7vw, 10px);
+      border-radius: 2px;
+      background: var(--green-dim);
+      opacity: 0.7;
+    }
+
+    .diagram-desc {
+      display: flex;
+      flex-direction: column;
+      gap: var(--element-gap);
+    }
+    .desc-item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.75em;
+      align-items: start;
+      padding: clamp(0.5rem, 1.5vh, 0.9rem) clamp(0.75rem, 2vw, 1rem);
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .desc-badge {
+      padding: 0.2em 0.5em;
+      border-radius: 3px;
+      font-size: var(--small-size);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-green { background: rgba(57,211,83,0.15); color: var(--green); }
+    .badge-cyan  { background: rgba(121,192,255,0.15); color: var(--cyan); }
+    .desc-text {
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+    .desc-text strong { color: var(--text); }
+
+    .kind-note {
+      padding: clamp(0.4rem, 1.2vh, 0.75rem) clamp(0.75rem, 2vw, 1rem);
+      background: rgba(57,211,83,0.05);
+      border-left: 2px solid var(--green);
+      border-radius: 0 4px 4px 0;
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      margin-top: var(--element-gap);
+    }
+    .kind-note strong { color: var(--green); }
+
+    /* ===========================================
+       SLIDE 4: インストール
+       =========================================== */
+    #s4 { background: var(--bg); }
+
+    .install-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: clamp(1rem, 3vw, 2.5rem);
+      align-items: start;
+      max-width: min(92vw, 1000px);
+    }
+    .cmd-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--element-gap);
+      margin-top: var(--content-gap);
+    }
+    .cmd-item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.8em;
+      align-items: center;
+      padding: clamp(0.5rem, 1.5vh, 0.75rem) clamp(0.6rem, 2vw, 1rem);
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .cmd-name {
+      padding: 0.2em 0.6em;
+      background: rgba(57,211,83,0.12);
+      border: 1px solid var(--green-dim);
+      border-radius: 3px;
+      font-size: var(--small-size);
+      color: var(--green);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .cmd-desc {
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    /* ===========================================
+       SLIDE 5: クラスタ作成
+       =========================================== */
+    #s5 { background: var(--bg); }
+
+    .create-layout {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: clamp(1rem, 3vw, 2.5rem);
+      align-items: start;
+      max-width: min(92vw, 1000px);
+    }
+    .ctx-box {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: clamp(0.75rem, 2vh, 1.25rem) clamp(0.75rem, 2vw, 1.25rem);
+      margin-top: var(--element-gap);
+    }
+    .ctx-title {
+      font-size: var(--small-size);
+      color: var(--yellow);
+      font-weight: 600;
+      margin-bottom: 0.5em;
+    }
+    .ctx-body {
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      line-height: 1.7;
+    }
+    .ctx-body code {
+      color: var(--cyan);
+      background: var(--bg3);
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+
+    .flow-steps {
+      display: flex;
+      flex-direction: column;
+      gap: var(--element-gap);
+    }
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75em;
+    }
+    .step-num {
+      flex-shrink: 0;
+      width: clamp(1.4rem, 2vw, 1.8rem);
+      height: clamp(1.4rem, 2vw, 1.8rem);
+      border-radius: 50%;
+      background: var(--bg3);
+      border: 1px solid var(--green-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--small-size);
+      color: var(--green);
+      font-weight: 600;
+    }
+    .step-content {
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      line-height: 1.6;
+      padding-top: 0.1em;
+    }
+    .step-content strong { color: var(--text); }
+    .step-content code {
+      color: var(--cyan);
+      background: var(--bg3);
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+      font-size: 0.9em;
+    }
+
+    /* ===========================================
+       SLIDE 6: 動作確認 & 削除
+       =========================================== */
+    #s6 { background: var(--bg); }
+
+    .verify-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: clamp(1rem, 3vw, 2.5rem);
+      align-items: start;
+      max-width: min(92vw, 1000px);
+    }
+    .check-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--element-gap);
+      margin-top: var(--element-gap);
+    }
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6em;
+      font-size: var(--small-size);
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+    .check-sym { color: var(--green); flex-shrink: 0; }
+    .check-item strong { color: var(--text); }
+
+    .next-box {
+      margin-top: var(--content-gap);
+      padding: clamp(0.5rem, 1.5vh, 0.9rem) clamp(0.75rem, 2vw, 1.25rem);
+      background: rgba(57,211,83,0.06);
+      border: 1px solid rgba(57,211,83,0.3);
+      border-radius: 6px;
+      font-size: var(--small-size);
+      color: var(--text-dim);
+    }
+    .next-box strong { color: var(--green); }
+    .next-box a { color: var(--cyan); text-decoration: none; }
+
+    /* ===========================================
+       SHORT VIEWPORT
+       =========================================== */
+    @media (max-height: 700px) {
+      :root {
+        --slide-padding: clamp(0.75rem, 3vw, 2rem);
+        --content-gap:   clamp(0.4rem, 1.5vw, 1rem);
+        --title-size:    clamp(1.25rem, 4.5vw, 2.5rem);
+        --h2-size:       clamp(1rem, 3vw, 1.75rem);
+      }
+    }
+    @media (max-height: 600px) {
+      :root {
+        --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+        --content-gap:   clamp(0.3rem, 1vw, 0.75rem);
+        --title-size:    clamp(1.1rem, 4vw, 2rem);
+        --body-size:     clamp(0.68rem, 1.2vw, 0.9rem);
+      }
+      #nav, .kbd-hint { display: none; }
+    }
+    @media (max-height: 500px) {
+      :root {
+        --slide-padding: clamp(0.4rem, 2vw, 1rem);
+        --title-size:    clamp(1rem, 3.5vw, 1.5rem);
+        --h2-size:       clamp(0.9rem, 2.5vw, 1.25rem);
+        --body-size:     clamp(0.65rem, 1vw, 0.85rem);
+      }
+    }
+    @media (max-width: 768px) {
+      .diagram-layout,
+      .install-layout,
+      .create-layout,
+      .verify-layout {
+        grid-template-columns: 1fr;
+      }
+      .feature-cards {
+        grid-template-columns: 1fr;
+      }
+      .nodes-row {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    @media (max-width: 600px) {
+      :root { --title-size: clamp(1.25rem, 7vw, 2.5rem); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+      }
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation dots -->
+  <nav id="nav" aria-label="スライドナビゲーション">
+    <button class="dot active" onclick="goTo(0)" aria-label="スライド 1"></button>
+    <button class="dot" onclick="goTo(1)" aria-label="スライド 2"></button>
+    <button class="dot" onclick="goTo(2)" aria-label="スライド 3"></button>
+    <button class="dot" onclick="goTo(3)" aria-label="スライド 4"></button>
+    <button class="dot" onclick="goTo(4)" aria-label="スライド 5"></button>
+    <button class="dot" onclick="goTo(5)" aria-label="スライド 6"></button>
+  </nav>
+  <p class="kbd-hint" aria-hidden="true">↑ ↓ / Space / Scroll で移動</p>
+
+  <main>
+
+    <!-- ==========================================
+         SLIDE 1: TITLE
+         ========================================== -->
+    <section class="slide" id="s1">
+      <div class="orb orb-green"></div>
+      <div class="orb orb-blue"></div>
+      <div class="slide-tag"><span>01</span> / 06</div>
+      <div class="slide-content">
+        <div class="title-box">
+          <p class="slide-label reveal">Kubernetes 学習シリーズ</p>
+          <h1 class="main-title reveal reveal-delay-1">環境構築<br><em>Kubernetes</em><br>with kind</h1>
+          <div class="title-sep reveal reveal-delay-2"></div>
+          <p class="subtitle reveal reveal-delay-3">Docker コンテナをノードとして動かす<br>本物の Kubernetes をローカルで</p>
+          <div class="title-term reveal reveal-delay-4">
+            <span class="prompt-sym">$</span>
+            <span>brew install kind kubectl</span>
+            <span class="cursor"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 2: kind とは
+         ========================================== -->
+    <section class="slide" id="s2">
+      <div class="slide-tag"><span>02</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">overview</p>
+        <h2 class="slide-heading reveal reveal-delay-1">kind <em>とは？</em></h2>
+        <div class="feature-cards">
+          <div class="fcard reveal reveal-delay-2">
+            <div class="fcard-icon">🐳</div>
+            <div class="fcard-title">Kubernetes in Docker</div>
+            <div class="fcard-body">Docker コンテナを Kubernetes ノードとして起動する。インフラ不要でローカルに本物の k8s が動く。</div>
+          </div>
+          <div class="fcard reveal reveal-delay-3">
+            <div class="fcard-icon">⚡</div>
+            <div class="fcard-title">本番環境に近い挙動</div>
+            <div class="fcard-body">minikube と異なり、マルチノードクラスタも作れる。本番で使う仕組みをそのままローカルで再現できる。</div>
+          </div>
+          <div class="fcard reveal reveal-delay-4">
+            <div class="fcard-icon">🎓</div>
+            <div class="fcard-title">学習に最適</div>
+            <div class="fcard-body">起動・削除が数秒。壊しても一瞬で作り直せる。Ingress や LoadBalancer の挙動も学べる。</div>
+          </div>
+        </div>
+        <div class="prereq-box reveal reveal-delay-5">
+          <span>前提条件:</span>
+          <strong>Docker Desktop</strong>
+          <span>がインストール済み・起動中であること</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 3: クラスタとは（図解）
+         ========================================== -->
+    <section class="slide" id="s3">
+      <div class="slide-tag"><span>03</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">architecture</p>
+        <h2 class="slide-heading reveal reveal-delay-1">クラスタ<em>とは？</em></h2>
+        <div class="diagram-layout">
+          <!-- Left: visual diagram -->
+          <div class="reveal reveal-delay-2">
+            <div class="diagram-box">
+              <span class="cluster-label">Kubernetes クラスタ</span>
+              <!-- Control Plane -->
+              <div class="cp-box">
+                <div class="cp-title">Control Plane</div>
+                <div class="cp-sub">司令塔 — スケジューリング・状態管理</div>
+              </div>
+              <!-- Arrow -->
+              <div class="arrow-down">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M10 3v11M5 10l5 6 5-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <!-- Nodes -->
+              <div class="nodes-row">
+                <div class="node-box">
+                  <div class="node-title">Node 1</div>
+                  <div class="pod-chips">
+                    <div class="pod-chip"></div>
+                    <div class="pod-chip"></div>
+                  </div>
+                  <div class="node-sub">Pod × 2</div>
+                </div>
+                <div class="node-box">
+                  <div class="node-title">Node 2</div>
+                  <div class="pod-chips">
+                    <div class="pod-chip"></div>
+                    <div class="pod-chip"></div>
+                  </div>
+                  <div class="node-sub">Pod × 2</div>
+                </div>
+                <div class="node-box">
+                  <div class="node-title">Node 3</div>
+                  <div class="pod-chips">
+                    <div class="pod-chip"></div>
+                  </div>
+                  <div class="node-sub">Pod × 1</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: descriptions -->
+          <div class="diagram-desc">
+            <div class="desc-item reveal reveal-delay-3">
+              <span class="desc-badge badge-green">Control Plane</span>
+              <div class="desc-text">
+                クラスタ全体を管理する<strong>頭脳</strong>。<br>
+                「どのノードで何を動かすか」を決め、状態を常に監視・維持する。
+              </div>
+            </div>
+            <div class="desc-item reveal reveal-delay-4">
+              <span class="desc-badge badge-cyan">Node</span>
+              <div class="desc-text">
+                アプリのコンテナ（Pod）が実際に動く<strong>マシン</strong>。<br>
+                物理・仮想どちらでも可。
+              </div>
+            </div>
+            <div class="kind-note reveal reveal-delay-5">
+              <strong>kind では</strong>、これらのノードが Docker コンテナとして動く。本物の Kubernetes と同じ仕組みをローカルで再現している。
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 4: インストール
+         ========================================== -->
+    <section class="slide" id="s4">
+      <div class="slide-tag"><span>04</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">install</p>
+        <h2 class="slide-heading reveal reveal-delay-1">インストール</h2>
+        <div class="install-layout">
+          <!-- Left: terminal -->
+          <div class="terminal-win reveal reveal-delay-2">
+            <div class="terminal-bar">
+              <div class="tbar-dot"></div>
+              <div class="tbar-dot"></div>
+              <div class="tbar-dot"></div>
+              <div class="tbar-title">Terminal</div>
+            </div>
+            <div class="terminal-body">
+              <div class="prompt hl">brew install kind kubectl</div>
+              <div class="comment"># インストール中...</div>
+              <div class="out">==> Fetching kind</div>
+              <div class="out">==> Installing kind</div>
+              <div class="out">==> Fetching kubectl</div>
+              <div class="out">==> Installing kubectl</div>
+              <div class="hl">✓ kind installed</div>
+              <div class="hl">✓ kubectl installed</div>
+              <div class="prompt"><span class="cursor"></span></div>
+            </div>
+          </div>
+          <!-- Right: descriptions -->
+          <div>
+            <p class="section-label reveal reveal-delay-3" style="margin-bottom:0.5em">インストールされるもの</p>
+            <div class="cmd-list">
+              <div class="cmd-item reveal reveal-delay-3">
+                <div class="cmd-name">kind</div>
+                <div class="cmd-desc">ローカル Kubernetes クラスタの<br>作成・削除・管理ツール</div>
+              </div>
+              <div class="cmd-item reveal reveal-delay-4">
+                <div class="cmd-name">kubectl</div>
+                <div class="cmd-desc">Kubernetes クラスタを操作する<br>汎用 CLI ツール</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 5: クラスタ作成
+         ========================================== -->
+    <section class="slide" id="s5">
+      <div class="slide-tag"><span>05</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">create cluster</p>
+        <h2 class="slide-heading reveal reveal-delay-1">クラスタ<em>作成</em></h2>
+        <div class="create-layout">
+          <!-- Left: terminal -->
+          <div>
+            <div class="terminal-win reveal reveal-delay-2">
+              <div class="terminal-bar">
+                <div class="tbar-dot"></div>
+                <div class="tbar-dot"></div>
+                <div class="tbar-dot"></div>
+                <div class="tbar-title">Terminal</div>
+              </div>
+              <div class="terminal-body">
+                <div class="comment"># クラスタを作成</div>
+                <div class="prompt"><span class="hl">kind create cluster</span> <span class="kw">--name</span> mycluster</div>
+                <div class="out">Creating cluster "mycluster" ...</div>
+                <div class="out"> ✓ Ensuring node image</div>
+                <div class="out"> ✓ Preparing nodes</div>
+                <div class="out"> ✓ Writing configuration</div>
+                <div class="out"> ✓ Starting control-plane</div>
+                <div class="hl">Set kubectl context to "kind-mycluster"</div>
+                <div class="prompt"><span class="cursor"></span></div>
+              </div>
+            </div>
+            <div class="ctx-box reveal reveal-delay-3">
+              <div class="ctx-title">💡 コンテキストとは</div>
+              <div class="ctx-body">「どのクラスタに対して操作するか」の設定。複数クラスタを扱うとき <code>kubectl config use-context</code> で切り替えて使う。</div>
+            </div>
+          </div>
+          <!-- Right: flow steps -->
+          <div class="reveal reveal-delay-3">
+            <p class="section-label" style="margin-bottom:0.75em">作成後の流れ</p>
+            <div class="flow-steps">
+              <div class="flow-step">
+                <div class="step-num">1</div>
+                <div class="step-content">Docker コンテナとしてノードが起動する</div>
+              </div>
+              <div class="flow-step">
+                <div class="step-num">2</div>
+                <div class="step-content"><strong>kubectl</strong> のコンテキストが自動で <code>kind-mycluster</code> に切り替わる</div>
+              </div>
+              <div class="flow-step">
+                <div class="step-num">3</div>
+                <div class="step-content"><code>kubectl get nodes</code> でクラスタの状態を確認できる</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 6: 動作確認 & 削除
+         ========================================== -->
+    <section class="slide" id="s6">
+      <div class="slide-tag"><span>06</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">verify & cleanup</p>
+        <h2 class="slide-heading reveal reveal-delay-1">動作確認 <em>&</em> 削除</h2>
+        <div class="verify-layout">
+          <!-- Left: kubectl get nodes -->
+          <div>
+            <p class="section-label reveal reveal-delay-2" style="margin-bottom:0.5em">動作確認</p>
+            <div class="terminal-win reveal reveal-delay-2">
+              <div class="terminal-bar">
+                <div class="tbar-dot"></div>
+                <div class="tbar-dot"></div>
+                <div class="tbar-dot"></div>
+                <div class="tbar-title">Terminal</div>
+              </div>
+              <div class="terminal-body">
+                <div class="comment"># ノードの確認</div>
+                <div class="prompt"><span class="hl">kubectl get nodes</span></div>
+                <div>&nbsp;</div>
+                <div class="out">NAME                      STATUS   ROLES</div>
+                <div class="out">mycluster-control-plane   <span class="hl">Ready</span>    control-plane</div>
+                <div>&nbsp;</div>
+                <div class="prompt"><span class="cursor"></span></div>
+              </div>
+            </div>
+            <div class="check-list">
+              <div class="check-item reveal reveal-delay-3">
+                <span class="check-sym">✓</span>
+                <span><strong>STATUS: Ready</strong> — クラスタが正常に動いている</span>
+              </div>
+              <div class="check-item reveal reveal-delay-4">
+                <span class="check-sym">✓</span>
+                <span>ROLES に <strong>control-plane</strong> が表示されていれば OK</span>
+              </div>
+            </div>
+          </div>
+          <!-- Right: delete + next -->
+          <div>
+            <p class="section-label reveal reveal-delay-2" style="margin-bottom:0.5em">クラスタ削除（不要になったとき）</p>
+            <div class="terminal-win reveal reveal-delay-2">
+              <div class="terminal-bar">
+                <div class="tbar-dot"></div>
+                <div class="tbar-dot"></div>
+                <div class="tbar-dot"></div>
+                <div class="tbar-title">Terminal</div>
+              </div>
+              <div class="terminal-body">
+                <div class="prompt"><span class="hl">kind delete cluster</span> <span class="kw">--name</span> mycluster</div>
+                <div class="out">Deleting cluster "mycluster" ...</div>
+                <div class="hl">✓ Deleted nodes</div>
+                <div class="prompt"><span class="cursor"></span></div>
+              </div>
+            </div>
+            <div class="next-box reveal reveal-delay-3">
+              <strong>次のステップ →</strong><br>
+              02. 基本操作 — Pod・Deployment・Service を実際に動かしながら学ぶ
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // ===========================================
+    // PRESENTATION CONTROLLER
+    // ===========================================
+
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const dots   = Array.from(document.querySelectorAll('.dot'));
+    let current  = 0;
+    let isScrolling = false;
+
+    // Reveal animations via IntersectionObserver
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          // Find all .reveal within the entering slide
+          entry.target.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+          // Update nav dots
+          const idx = slides.indexOf(entry.target);
+          if (idx !== -1) {
+            current = idx;
+            dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+          }
+        }
+      });
+    }, { threshold: 0.5 });
+
+    slides.forEach(s => observer.observe(s));
+
+    // Trigger first slide immediately
+    slides[0].querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+
+    // Navigation
+    function goTo(idx) {
+      idx = Math.max(0, Math.min(slides.length - 1, idx));
+      slides[idx].scrollIntoView({ behavior: 'smooth' });
+      current = idx;
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        goTo(current + 1);
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        e.preventDefault();
+        goTo(current - 1);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        goTo(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        goTo(slides.length - 1);
+      }
+    });
+
+    // Mouse wheel navigation (debounced)
+    document.addEventListener('wheel', e => {
+      if (isScrolling) return;
+      isScrolling = true;
+      if (e.deltaY > 0) goTo(current + 1);
+      else              goTo(current - 1);
+      setTimeout(() => { isScrolling = false; }, 800);
+    }, { passive: true });
+
+    // Touch/swipe navigation
+    let touchStartY = 0;
+    document.addEventListener('touchstart', e => {
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    document.addEventListener('touchend', e => {
+      const dy = touchStartY - e.changedTouches[0].clientY;
+      if (Math.abs(dy) > 40) {
+        if (dy > 0) goTo(current + 1);
+        else        goTo(current - 1);
+      }
+    }, { passive: true });
+  </script>
+</body>
+</html>

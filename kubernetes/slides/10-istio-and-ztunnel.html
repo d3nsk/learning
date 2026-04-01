@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>10. Istio / ZTunnel — Kubernetes</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow-x: hidden; font-family: 'JetBrains Mono', monospace; }
+    html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+    .slide { width:100vw; height:100vh; height:100dvh; overflow:hidden; scroll-snap-align:start; display:flex; flex-direction:column; position:relative; }
+    .slide-content { flex:1; display:flex; flex-direction:column; justify-content:center; max-height:100%; overflow:hidden; padding:var(--slide-padding); }
+
+    :root {
+      --bg:#0d1117; --bg2:#161b22; --bg3:#21262d;
+      --green:#39d353; --green-dim:#26a641; --green-glow:#39d35344;
+      --cyan:#79c0ff; --yellow:#e3b341; --red:#f85149; --purple:#bc8cff; --orange:#ffa657; --teal:#56d3d3;
+      --text:#e6edf3; --text-dim:#8b949e; --border:#30363d;
+      --title-size:clamp(1.4rem,4.5vw,3.2rem);
+      --h2-size:clamp(1.05rem,2.8vw,1.9rem);
+      --body-size:clamp(0.7rem,1.35vw,1rem);
+      --small-size:clamp(0.6rem,0.95vw,0.82rem);
+      --code-size:clamp(0.58rem,1vw,0.78rem);
+      --slide-padding:clamp(1.25rem,4.5vw,4.5rem);
+      --content-gap:clamp(0.5rem,1.8vw,1.75rem);
+      --element-gap:clamp(0.3rem,0.9vw,0.9rem);
+    }
+    body { background:var(--bg); color:var(--text); }
+    .slide::before { content:''; position:absolute; inset:0; pointer-events:none; z-index:10; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 4px); }
+    .slide::after  { content:''; position:absolute; inset:0; pointer-events:none; z-index:0; background-image:linear-gradient(rgba(57,211,83,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(57,211,83,0.025) 1px,transparent 1px); background-size:40px 40px; }
+    .slide-content { z-index:1; }
+    .slide-tag { position:absolute; top:clamp(0.75rem,2vh,1.5rem); right:clamp(1rem,3vw,2rem); font-size:var(--small-size); color:var(--text-dim); z-index:20; }
+    .slide-tag span { color:var(--green); }
+    #nav { position:fixed; right:clamp(0.5rem,1.5vw,1.25rem); top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:clamp(0.3rem,0.8vh,0.55rem); z-index:100; }
+    .dot { width:clamp(5px,0.5vw,8px); height:clamp(5px,0.5vw,8px); border-radius:50%; background:var(--border); cursor:pointer; transition:background 0.3s,box-shadow 0.3s; border:none; }
+    .dot.active { background:var(--green); box-shadow:0 0 8px var(--green-glow); }
+    .kbd-hint { position:fixed; bottom:clamp(0.5rem,2vh,1.25rem); left:50%; transform:translateX(-50%); font-size:var(--small-size); color:var(--text-dim); z-index:100; }
+
+    .reveal { opacity:0; transform:translateY(14px); transition:opacity 0.45s ease,transform 0.45s ease; }
+    .reveal.in { opacity:1; transform:none; }
+    .rd1{transition-delay:0.08s} .rd2{transition-delay:0.16s} .rd3{transition-delay:0.24s}
+    .rd4{transition-delay:0.32s} .rd5{transition-delay:0.40s} .rd6{transition-delay:0.48s}
+
+    @keyframes blink      { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes glow-pulse { 0%,100%{box-shadow:0 0 10px var(--green-glow)} 50%{box-shadow:0 0 22px var(--green),0 0 36px var(--green-glow)} }
+    @keyframes lineGrow   { from{width:0} to{width:100%} }
+
+    .section-label { font-size:var(--small-size); color:var(--green); letter-spacing:0.12em; text-transform:uppercase; margin-bottom:var(--element-gap); }
+    .slide-heading  { font-size:var(--h2-size); font-weight:700; color:var(--text); margin-bottom:var(--content-gap); }
+    .slide-heading em { font-style:normal; color:var(--green); }
+    .orb { position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none; z-index:0; }
+    .orb-a { width:min(35vw,380px); height:min(35vw,380px); background:radial-gradient(circle,rgba(57,211,83,0.10) 0%,transparent 70%); top:-8%; right:-4%; }
+    .orb-b { width:min(28vw,280px); height:min(28vw,280px); background:radial-gradient(circle,rgba(188,140,255,0.08) 0%,transparent 70%); bottom:4%; left:4%; }
+
+    /* terminal */
+    .term { background:var(--bg2); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+    .term-bar { display:flex; align-items:center; gap:6px; padding:clamp(0.28rem,0.9vh,0.5rem) clamp(0.6rem,1.5vw,1rem); background:var(--bg3); border-bottom:1px solid var(--border); }
+    .td { width:clamp(7px,0.7vw,10px); height:clamp(7px,0.7vw,10px); border-radius:50%; }
+    .td:nth-child(1){background:#ff5f57} .td:nth-child(2){background:#ffbd2e} .td:nth-child(3){background:#28ca41}
+    .term-title { margin:0 auto; font-size:var(--small-size); color:var(--text-dim); }
+    .term-body { padding:clamp(0.45rem,1.5vh,1rem) clamp(0.7rem,1.8vw,1.2rem); font-size:var(--code-size); line-height:1.65; }
+    .p::before { content:'$ '; color:var(--green); font-weight:600; }
+    .hl{color:var(--green);font-weight:600} .cm{color:var(--text-dim)} .out{color:var(--cyan)}
+    .kw{color:var(--yellow)} .str{color:var(--orange)}
+    .cursor { display:inline-block; width:0.55em; height:1.1em; background:var(--green); vertical-align:text-bottom; margin-left:2px; animation:blink 1.2s step-end infinite; }
+
+    /* table */
+    .k-table { width:100%; border-collapse:collapse; font-size:var(--small-size); }
+    .k-table th { text-align:left; padding:0.4em 0.7em; background:var(--bg3); color:var(--text-dim); border-bottom:1px solid var(--border); font-weight:600; }
+    .k-table td { padding:0.4em 0.7em; border-bottom:1px solid rgba(48,54,61,0.5); color:var(--text-dim); vertical-align:top; }
+    .k-table td:first-child { color:var(--text); font-weight:500; }
+    .k-table tr:last-child td { border-bottom:none; }
+    .k-table .good { color:var(--green); }
+    .k-table .bad  { color:var(--red); }
+    .k-table .hl   { color:var(--cyan); font-weight:600; }
+    .k-table .yl   { color:var(--yellow); }
+
+    /* two-col */
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:clamp(1rem,3vw,2.5rem); align-items:start; max-width:min(92vw,1060px); }
+    .three-col { display:grid; grid-template-columns:1fr 1fr 1fr; gap:clamp(0.6rem,2vw,1.2rem); max-width:min(92vw,1060px); }
+
+    /* ==========================================
+       SLIDE 1: TITLE
+       ========================================== */
+    .title-box { display:flex; flex-direction:column; gap:var(--content-gap); max-width:min(90vw,860px); }
+    .slide-label { font-size:var(--small-size); color:var(--green); letter-spacing:0.15em; text-transform:uppercase; }
+    .main-title { font-size:var(--title-size); font-weight:700; line-height:1.1; color:var(--text); }
+    .main-title em { font-style:normal; color:var(--green); text-shadow:0 0 18px var(--green-glow); }
+    .subtitle { font-size:var(--h2-size); color:var(--text-dim); font-weight:300; }
+    .title-sep { height:2px; background:var(--green); box-shadow:0 0 8px var(--green-glow); animation:lineGrow 0.8s ease forwards 0.4s; width:0; max-width:clamp(40px,8vw,80px); }
+    .tag-row { display:flex; gap:0.5em; flex-wrap:wrap; }
+    .tag { padding:0.25em 0.65em; border-radius:4px; font-size:var(--small-size); font-weight:600; border:1px solid; background:transparent; }
+    .tg { color:var(--green);  border-color:var(--green-dim); }
+    .tp { color:var(--purple); border-color:rgba(188,140,255,0.4); }
+    .tc { color:var(--cyan);   border-color:rgba(121,192,255,0.4); }
+    .tt { color:var(--teal);   border-color:rgba(86,211,211,0.4); }
+
+    /* ==========================================
+       SLIDE 2: レイヤー構成
+       ========================================== */
+    .layer-stack { display:flex; flex-direction:column; gap:clamp(0.25rem,0.8vh,0.5rem); max-width:min(80vw,800px); }
+    .layer-box {
+      padding:clamp(0.5rem,1.5vh,0.9rem) clamp(0.75rem,2vw,1.25rem);
+      border-radius:6px; border:1px solid; display:grid;
+      grid-template-columns:1fr auto;
+      align-items:center; gap:1em;
+      transition:border-color 0.3s;
+    }
+    .lb-app    { background:rgba(86,211,211,0.06);  border-color:rgba(86,211,211,0.3); }
+    .lb-istio  { background:rgba(57,211,83,0.10);   border-color:var(--green-dim); animation:glow-pulse 3s ease-in-out infinite; }
+    .lb-k8s    { background:rgba(121,192,255,0.07); border-color:rgba(121,192,255,0.35); }
+    .lb-node   { background:rgba(188,140,255,0.06); border-color:rgba(188,140,255,0.3); }
+    .layer-name { font-size:var(--body-size); font-weight:600; }
+    .layer-name-app   { color:var(--teal); }
+    .layer-name-istio { color:var(--green); }
+    .layer-name-k8s   { color:var(--cyan); }
+    .layer-name-node  { color:var(--purple); }
+    .layer-sub  { font-size:var(--small-size); color:var(--text-dim); margin-top:0.15em; }
+    .layer-impl { font-size:var(--small-size); color:var(--text-dim); text-align:right; }
+    .layer-arrow { text-align:center; color:var(--text-dim); font-size:var(--small-size); }
+    .emphasis-box {
+      margin-top:var(--element-gap); padding:clamp(0.4rem,1.2vh,0.7rem) clamp(0.7rem,2vw,1.1rem);
+      background:rgba(57,211,83,0.06); border:1px solid rgba(57,211,83,0.3); border-radius:5px;
+      font-size:var(--small-size); color:var(--text-dim); line-height:1.7;
+    }
+    .emphasis-box strong { color:var(--green); }
+
+    /* ==========================================
+       SLIDE 3: Istio がやること
+       ========================================== */
+    .feature-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:clamp(0.5rem,1.5vw,1rem); max-width:min(92vw,1000px); }
+    .feat-card { background:var(--bg2); border:1px solid var(--border); border-radius:7px; padding:clamp(0.6rem,1.8vh,1rem) clamp(0.7rem,2vw,1.1rem); }
+    .feat-card:hover { border-color:var(--green-dim); }
+    .feat-icon   { font-size:clamp(1.1rem,2vw,1.5rem); margin-bottom:0.35em; }
+    .feat-title  { font-size:var(--small-size); font-weight:700; color:var(--green); margin-bottom:0.3em; }
+    .feat-body   { font-size:calc(var(--small-size)*0.95); color:var(--text-dim); line-height:1.6; }
+    .feat-body strong { color:var(--text); }
+    .feat-body code { color:var(--cyan); background:var(--bg3); padding:0.1em 0.3em; border-radius:3px; font-size:0.9em; }
+
+    /* ==========================================
+       SLIDE 4: ZTunnel
+       ========================================== */
+    .ztunnel-flow {
+      background:var(--bg2); border:1px solid var(--border); border-radius:8px;
+      padding:clamp(0.6rem,1.8vh,1.1rem) clamp(0.7rem,2vw,1.3rem);
+    }
+    .flow-title  { font-size:var(--small-size); color:var(--text-dim); margin-bottom:0.5em; }
+    .flow-v-row  { display:flex; gap:0.5em; align-items:center; margin:0.25em 0; font-size:var(--small-size); }
+    .fvr-box { padding:0.25em 0.65em; border-radius:4px; border:1px solid; }
+    .fvr-pod   { background:rgba(121,192,255,0.08); border-color:rgba(121,192,255,0.35); color:var(--cyan); }
+    .fvr-zt    { background:rgba(57,211,83,0.10); border-color:var(--green-dim); color:var(--green); font-weight:600; }
+    .fvr-note  { color:var(--text-dim); font-size:calc(var(--small-size)*0.9); }
+    .fvr-arrow { color:var(--text-dim); }
+
+    .hbone-badge {
+      display:inline-block; padding:0.15em 0.5em; border-radius:3px;
+      background:rgba(57,211,83,0.1); border:1px solid var(--green-dim);
+      font-size:calc(var(--small-size)*0.9); color:var(--green); font-weight:600;
+    }
+
+    /* ==========================================
+       SLIDE 5: Waypoint Proxy
+       ========================================== */
+    .waypoint-flow {
+      background:var(--bg2); border:1px solid var(--border); border-radius:8px;
+      padding:clamp(0.6rem,1.8vh,1.1rem) clamp(0.7rem,2vw,1.3rem);
+      font-size:var(--code-size); line-height:1.8;
+    }
+    .wf-pod  { color:var(--cyan); }
+    .wf-zt   { color:var(--green); font-weight:600; }
+    .wf-wp   { color:var(--purple); font-weight:600; }
+    .wf-cmnt { color:var(--text-dim); }
+    .wf-arrow{ color:var(--text-dim); padding-left:0.5em; }
+
+    .when-table-wrap { background:var(--bg2); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+
+    /* ==========================================
+       SLIDE 6: istiod + SRE
+       ========================================== */
+    .istiod-box {
+      background:rgba(188,140,255,0.07); border:1px solid rgba(188,140,255,0.3); border-radius:8px;
+      padding:clamp(0.6rem,1.8vh,1.1rem) clamp(0.7rem,2vw,1.3rem);
+    }
+    .istiod-title { font-size:var(--small-size); font-weight:700; color:var(--purple); margin-bottom:0.5em; }
+    .istiod-items { display:flex; flex-direction:column; gap:0.35em; }
+    .istiod-item { display:flex; gap:0.5em; align-items:flex-start; font-size:var(--small-size); color:var(--text-dim); line-height:1.5; }
+    .istiod-bullet { color:var(--purple); flex-shrink:0; }
+
+    .sre-cards { display:flex; flex-direction:column; gap:var(--element-gap); }
+    .sre-card { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:clamp(0.45rem,1.3vh,0.8rem) clamp(0.7rem,2vw,1.1rem); }
+    .sre-title { font-size:var(--small-size); font-weight:600; color:var(--cyan); margin-bottom:0.3em; }
+    .sre-body  { font-size:calc(var(--small-size)*0.95); color:var(--text-dim); line-height:1.6; }
+    .sre-body code { color:var(--cyan); background:var(--bg3); padding:0.1em 0.3em; border-radius:3px; font-size:0.9em; }
+
+    @media (max-width:768px) { .two-col,.feature-grid,.three-col { grid-template-columns:1fr; } }
+    @media (max-height:700px) { :root { --slide-padding:clamp(0.75rem,3vw,2rem); --content-gap:clamp(0.35rem,1.3vw,0.9rem); --h2-size:clamp(1rem,2.8vw,1.7rem); } }
+    @media (max-height:600px) { :root { --slide-padding:clamp(0.5rem,2.5vw,1.5rem); --content-gap:clamp(0.25rem,1vw,0.7rem); } #nav,.kbd-hint{display:none} }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after{animation-duration:0.01ms!important;transition-duration:0.2s!important} html{scroll-behavior:auto} }
+  </style>
+</head>
+<body>
+
+<nav id="nav">
+  <button class="dot active" onclick="goTo(0)"></button>
+  <button class="dot" onclick="goTo(1)"></button>
+  <button class="dot" onclick="goTo(2)"></button>
+  <button class="dot" onclick="goTo(3)"></button>
+  <button class="dot" onclick="goTo(4)"></button>
+  <button class="dot" onclick="goTo(5)"></button>
+</nav>
+<p class="kbd-hint" aria-hidden="true">↑ ↓ / Space / Scroll で移動</p>
+
+<main>
+
+<!-- SLIDE 1: TITLE -->
+<section class="slide" id="s1">
+  <div class="orb orb-a"></div><div class="orb orb-b"></div>
+  <div class="slide-tag"><span>01</span> / 06</div>
+  <div class="slide-content">
+    <div class="title-box">
+      <p class="slide-label reveal">Kubernetes 学習シリーズ</p>
+      <h1 class="main-title reveal rd1"><em>Istio</em> /<br>ZTunnel</h1>
+      <div class="title-sep reveal rd2"></div>
+      <p class="subtitle reveal rd3">サービスメッシュで<br>「信頼できるか・見えているか」を担う</p>
+      <div class="tag-row reveal rd4">
+        <span class="tag tg">mTLS</span>
+        <span class="tag tp">Ambient Mesh</span>
+        <span class="tag tt">ZTunnel</span>
+        <span class="tag tc">Waypoint Proxy</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 2: レイヤー構成 -->
+<section class="slide" id="s2">
+  <div class="slide-tag"><span>02</span> / 06</div>
+  <div class="slide-content">
+    <p class="section-label reveal">architecture</p>
+    <h2 class="slide-heading reveal rd1">Kubernetes Service との<em>役割分担</em></h2>
+    <div class="two-col">
+      <!-- Left: layer stack -->
+      <div class="reveal rd2">
+        <div class="layer-stack">
+          <div class="layer-box lb-app">
+            <div>
+              <div class="layer-name layer-name-app">アプリケーション層</div>
+              <div class="layer-sub">HTTP / gRPC / ビジネスロジック</div>
+            </div>
+            <div class="layer-impl">Pod 内のコード</div>
+          </div>
+          <div class="layer-arrow">↓</div>
+          <div class="layer-box lb-istio">
+            <div>
+              <div class="layer-name layer-name-istio">Istio / ZTunnel 層 ← 今日のテーマ</div>
+              <div class="layer-sub">mTLS・ポリシー強制・テレメトリ収集</div>
+            </div>
+            <div class="layer-impl">ZTunnel (Ambient)<br>or Sidecar (Envoy)</div>
+          </div>
+          <div class="layer-arrow">↓</div>
+          <div class="layer-box lb-k8s">
+            <div>
+              <div class="layer-name layer-name-k8s">Kubernetes Service 層</div>
+              <div class="layer-sub">宛先解決・ロードバランシング</div>
+            </div>
+            <div class="layer-impl">ClusterIP / kube-proxy</div>
+          </div>
+          <div class="layer-arrow">↓</div>
+          <div class="layer-box lb-node">
+            <div>
+              <div class="layer-name layer-name-node">Node ネットワーク層</div>
+              <div class="layer-sub">物理パケット転送</div>
+            </div>
+            <div class="layer-impl">CNI (Flannel / Calico)</div>
+          </div>
+        </div>
+        <div class="emphasis-box reveal rd3">
+          <strong>Istio は ClusterIP の代替ではない</strong>。その上に乗る追加レイヤー。両方が同時に動作する。
+        </div>
+      </div>
+      <!-- Right: what Istio does NOT do vs does -->
+      <div class="reveal rd3">
+        <p style="font-size:var(--small-size);color:var(--text-dim);margin-bottom:0.5em">Kubernetes だけでは難しいこと</p>
+        <table class="k-table" style="margin-bottom:var(--content-gap)">
+          <thead><tr><th>課題</th><th>Istio で解決</th></tr></thead>
+          <tbody>
+            <tr><td>Pod 間通信の盗聴リスク</td><td class="good">mTLS で全暗号化</td></tr>
+            <tr><td>「本当にあの Pod か？」を検証できない</td><td class="good">SPIFFE ID で相互認証</td></tr>
+            <tr><td>アプリを改修せず通信ログを取りたい</td><td class="good">テレメトリを透過収集</td></tr>
+            <tr><td>Workload 単位のアクセス制御</td><td class="good">L4 AuthorizationPolicy</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 3: Istio がやること -->
+<section class="slide" id="s3">
+  <div class="slide-tag"><span>03</span> / 06</div>
+  <div class="slide-content">
+    <p class="section-label reveal">features</p>
+    <h2 class="slide-heading reveal rd1">Istio が<em>具体的にやること</em></h2>
+    <div class="feature-grid">
+      <div class="feat-card reveal rd2">
+        <div class="feat-icon">🔐</div>
+        <div class="feat-title">① mTLS（相互 TLS 認証）</div>
+        <div class="feat-body">
+          Pod 間通信で<strong>双方向の証明書検証</strong>。<br>
+          「本当に Pod B か？」をなりすまし防止。<br>
+          証明書は <strong>istiod</strong> が自動発行・ローテーション（SPIFFE/SVID）。
+        </div>
+      </div>
+      <div class="feat-card reveal rd3">
+        <div class="feat-icon">🔒</div>
+        <div class="feat-title">② 暗号化</div>
+        <div class="feat-body">
+          Pod 間・Node 間の通信を<strong>すべて暗号化</strong>。<br>
+          アプリ側の<strong>コード変更ゼロ</strong>で平文パケットをなくせる。<br>
+          iptables redirect でアプリは意識しない。
+        </div>
+      </div>
+      <div class="feat-card reveal rd4">
+        <div class="feat-icon">🛡️</div>
+        <div class="feat-title">③ L4 ポリシー強制</div>
+        <div class="feat-body">
+          「Service A は Service B としか通信できない」ルールを強制。<br>
+          NetworkPolicy より細かい <strong>Workload Identity（SPIFFE ID）</strong> ベースで制御。
+        </div>
+      </div>
+      <div class="feat-card reveal rd5">
+        <div class="feat-icon">📊</div>
+        <div class="feat-title">④ テレメトリ収集</div>
+        <div class="feat-body">
+          リクエスト数・レイテンシ・エラー率を<strong>Pod に手を加えずに収集</strong>。<br>
+          Prometheus / Grafana / Loki などに流せる。<br>
+          ゴールデンシグナル（LETS）を自動取得。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 4: ZTunnel -->
+<section class="slide" id="s4">
+  <div class="slide-tag"><span>04</span> / 06</div>
+  <div class="slide-content">
+    <p class="section-label reveal">ambient mesh</p>
+    <h2 class="slide-heading reveal rd1"><em>ZTunnel</em> — Ambient Mesh モード</h2>
+    <div class="two-col">
+      <!-- Left: comparison table -->
+      <div class="reveal rd2">
+        <div class="term" style="background:var(--bg2);border-color:var(--border)">
+          <div class="term-bar"><div class="td"></div><div class="td"></div><div class="td"></div><div class="term-title">サイドカー vs ZTunnel</div></div>
+          <div style="overflow:auto">
+            <table class="k-table" style="font-size:calc(var(--small-size)*0.95)">
+              <thead><tr><th></th><th>サイドカー (Envoy)</th><th>ZTunnel (Ambient)</th></tr></thead>
+              <tbody>
+                <tr><td>配置</td><td>Pod 内に注入</td><td class="hl">Node 単位 (DaemonSet)</td></tr>
+                <tr><td>担当レイヤー</td><td>L4 + L7</td><td class="yl">L4 のみ</td></tr>
+                <tr><td>Pod への影響</td><td class="bad">あり（再起動必要）</td><td class="good">なし</td></tr>
+                <tr><td>L7 機能</td><td class="good">あり</td><td>Waypoint に委譲</td></tr>
+                <tr><td>リソース効率</td><td>Pod数分だけ Envoy</td><td class="good">Node 1つに 1プロセス</td></tr>
+                <tr><td>実装言語</td><td>C++</td><td class="hl">Rust（軽量）</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- Right: traffic flow -->
+      <div class="reveal rd3">
+        <p style="font-size:var(--small-size);color:var(--text-dim);margin-bottom:0.5em">ZTunnel の通信フロー</p>
+        <div class="ztunnel-flow">
+          <div class="flow-v-row"><span class="fvr-box fvr-pod">Pod A</span></div>
+          <div class="flow-v-row"><span class="fvr-arrow">↓</span><span class="fvr-note">iptables redirect（アプリは意識しない）</span></div>
+          <div class="flow-v-row"><span class="fvr-box fvr-zt">ZTunnel (Node A)</span></div>
+          <div class="flow-v-row"><span class="fvr-arrow">↓</span><span class="hbone-badge">HBONE</span><span class="fvr-note" style="margin-left:0.4em">トンネル（mTLS 暗号化済み）</span></div>
+          <div class="flow-v-row"><span class="fvr-box fvr-zt">ZTunnel (Node B)</span></div>
+          <div class="flow-v-row"><span class="fvr-arrow">↓</span><span class="fvr-note">復号・Workload ID 検証</span></div>
+          <div class="flow-v-row"><span class="fvr-box fvr-pod">Pod B</span></div>
+        </div>
+        <div style="margin-top:var(--element-gap);padding:0.5em 0.8em;background:rgba(57,211,83,0.05);border:1px solid rgba(57,211,83,0.25);border-radius:5px;font-size:var(--small-size);color:var(--text-dim);">
+          <strong style="color:var(--green)">HBONE</strong>（HTTP-Based Overlay Network Encapsulation）:<br>
+          ZTunnel 間をつなぐ独自トンネルプロトコル。mTLS を内包する。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 5: Waypoint Proxy -->
+<section class="slide" id="s5">
+  <div class="slide-tag"><span>05</span> / 06</div>
+  <div class="slide-content">
+    <p class="section-label reveal">l7 policy</p>
+    <h2 class="slide-heading reveal rd1"><em>Waypoint Proxy</em> — L7 が必要なとき</h2>
+    <div class="two-col">
+      <!-- Left: flow with Waypoint -->
+      <div class="reveal rd2">
+        <p style="font-size:var(--small-size);color:var(--text-dim);margin-bottom:0.4em">Waypoint 経由のトラフィック</p>
+        <div class="waypoint-flow">
+          <div><span class="wf-pod">Pod A</span></div>
+          <div><span class="wf-arrow">↓</span> <span class="wf-cmnt">iptables redirect</span></div>
+          <div><span class="wf-zt">ZTunnel (Node A)</span></div>
+          <div><span class="wf-arrow">↓</span> <span class="wf-cmnt">HBONE</span></div>
+          <div><span class="wf-zt">ZTunnel (Waypoint が乗っている Node)</span></div>
+          <div><span class="wf-arrow">↓</span></div>
+          <div><span class="wf-wp">Waypoint Proxy Pod</span> <span class="wf-cmnt">← L7 処理</span></div>
+          <div><span class="wf-arrow">↓</span></div>
+          <div><span class="wf-zt">ZTunnel (Node B)</span></div>
+          <div><span class="wf-arrow">↓</span></div>
+          <div><span class="wf-pod">Pod B</span></div>
+        </div>
+      </div>
+      <!-- Right: when to use -->
+      <div class="reveal rd3">
+        <p style="font-size:var(--small-size);color:var(--text-dim);margin-bottom:0.4em">いつ Waypoint を使うか</p>
+        <div class="when-table-wrap" style="margin-bottom:var(--element-gap)">
+          <table class="k-table">
+            <thead><tr><th>ユースケース</th><th>ZTunnel のみ</th><th>Waypoint 追加</th></tr></thead>
+            <tbody>
+              <tr><td>mTLS・暗号化</td><td class="good">✓</td><td>不要</td></tr>
+              <tr><td>L4 認証・認可</td><td class="good">✓</td><td>不要</td></tr>
+              <tr><td>HTTP パスルーティング</td><td class="bad">✗</td><td class="good">必要</td></tr>
+              <tr><td>リトライ・サーキットブレーカー</td><td class="bad">✗</td><td class="good">必要</td></tr>
+              <tr><td>ヘッダー操作</td><td class="bad">✗</td><td class="good">必要</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:0.5em 0.8em;background:rgba(227,179,65,0.06);border-left:2px solid var(--yellow);border-radius:0 4px 4px 0;font-size:var(--small-size);color:var(--text-dim);line-height:1.6;">
+          <strong style="color:var(--yellow)">⚠️ SRE 観点の注意</strong><br>
+          Waypoint は普通の Pod。障害時は対象 Namespace の L7 ポリシーが効かなくなる（L4 は ZTunnel が継続）。<br>
+          <code style="color:var(--cyan);background:var(--bg3);padding:0.1em 0.3em;border-radius:3px">istioctl proxy-status</code> で設定同期状態を確認。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SLIDE 6: istiod + SRE 活用 -->
+<section class="slide" id="s6">
+  <div class="slide-tag"><span>06</span> / 06</div>
+  <div class="slide-content">
+    <p class="section-label reveal">control plane &amp; sre</p>
+    <h2 class="slide-heading reveal rd1">コントロールプレーン <em>istiod</em> + SRE 活用</h2>
+    <div class="two-col">
+      <!-- Left: istiod + commands -->
+      <div class="reveal rd2">
+        <div class="istiod-box" style="margin-bottom:var(--element-gap)">
+          <div class="istiod-title">🧠 istiod の役割</div>
+          <div class="istiod-items">
+            <div class="istiod-item"><span class="istiod-bullet">▸</span><span>証明書の発行・配布（CA: Certificate Authority）</span></div>
+            <div class="istiod-item"><span class="istiod-bullet">▸</span><span>ポリシーの配布（AuthorizationPolicy など）</span></div>
+            <div class="istiod-item"><span class="istiod-bullet">▸</span><span>ZTunnel / Waypoint Proxy への設定プッシュ（xDS プロトコル）</span></div>
+          </div>
+        </div>
+        <div class="term">
+          <div class="term-bar"><div class="td"></div><div class="td"></div><div class="td"></div><div class="term-title">診断コマンド</div></div>
+          <div class="term-body">
+            <div class="cm"># ZTunnel の状態確認</div>
+            <div class="p"><span class="hl">istioctl ztunnel-config</span> workload</div>
+            <div>&nbsp;</div>
+            <div class="cm"># Waypoint の確認</div>
+            <div class="p"><span class="kw">kubectl get</span> gateway -n &lt;namespace&gt;</div>
+            <div>&nbsp;</div>
+            <div class="cm"># 設定同期状態</div>
+            <div class="p"><span class="hl">istioctl proxy-status</span></div>
+            <div class="p"><span class="cursor"></span></div>
+          </div>
+        </div>
+      </div>
+      <!-- Right: SRE 活用ポイント -->
+      <div class="reveal rd3">
+        <p style="font-size:var(--small-size);color:var(--text-dim);margin-bottom:0.5em">SRE 観点での活用ポイント</p>
+        <div class="sre-cards">
+          <div class="sre-card">
+            <div class="sre-title">🔍 障害切り分け</div>
+            <div class="sre-body">Pod 間通信失敗 → <code>istioctl ztunnel-config</code> でどのノードのどの ZTunnel が問題か特定できる。</div>
+          </div>
+          <div class="sre-card">
+            <div class="sre-title">📈 可観測性</div>
+            <div class="sre-body">アプリ改修なしにゴールデンシグナル（Latency / Traffic / Errors / Saturation）取得。Prometheus・Grafana へ自動連携。</div>
+          </div>
+          <div class="sre-card">
+            <div class="sre-title">🕵️ セキュリティ監査</div>
+            <div class="sre-body">mTLS 強制により「誰が誰と通信したか」をログで追える。インシデント時の通信経路の特定に有効。</div>
+          </div>
+        </div>
+        <div style="margin-top:var(--element-gap);padding:0.5em 0.8em;background:rgba(57,211,83,0.06);border:1px solid rgba(57,211,83,0.3);border-radius:5px;font-size:var(--small-size);color:var(--text-dim);">
+          <strong style="color:var(--green)">まとめ</strong>: Istio/ZTunnel は Kubernetes の上に乗るセキュリティ・可観測性レイヤー。L7 が不要なら ZTunnel のみで十分、必要なら Waypoint Proxy を追加する。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const slides=Array.from(document.querySelectorAll('.slide')),dots=Array.from(document.querySelectorAll('.dot'));
+  let current=0,isScrolling=false;
+  const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.querySelectorAll('.reveal').forEach(el=>el.classList.add('in'));const i=slides.indexOf(e.target);if(i!==-1){current=i;dots.forEach((d,j)=>d.classList.toggle('active',j===i));}}});},{threshold:0.5});
+  slides.forEach(s=>obs.observe(s));
+  slides[0].querySelectorAll('.reveal').forEach(el=>el.classList.add('in'));
+  function goTo(i){i=Math.max(0,Math.min(slides.length-1,i));slides[i].scrollIntoView({behavior:'smooth'});current=i;}
+  document.addEventListener('keydown',e=>{if(e.key==='ArrowDown'||e.key===' '||e.key==='PageDown'){e.preventDefault();goTo(current+1);}else if(e.key==='ArrowUp'||e.key==='PageUp'){e.preventDefault();goTo(current-1);}else if(e.key==='Home'){e.preventDefault();goTo(0);}else if(e.key==='End'){e.preventDefault();goTo(slides.length-1);}});
+  document.addEventListener('wheel',e=>{if(isScrolling)return;isScrolling=true;goTo(e.deltaY>0?current+1:current-1);setTimeout(()=>{isScrolling=false;},800);},{passive:true});
+  let ty=0;
+  document.addEventListener('touchstart',e=>{ty=e.touches[0].clientY;},{passive:true});
+  document.addEventListener('touchend',e=>{const dy=ty-e.changedTouches[0].clientY;if(Math.abs(dy)>40)goTo(dy>0?current+1:current-1);},{passive:true});
+</script>
+</body>
+</html>

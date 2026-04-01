@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>03. Ingress + nginx — Kubernetes</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; overflow-x: hidden; font-family: 'JetBrains Mono', monospace; }
+    html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+
+    .slide {
+      width: 100vw; height: 100vh; height: 100dvh;
+      overflow: hidden; scroll-snap-align: start;
+      display: flex; flex-direction: column; position: relative;
+    }
+    .slide-content {
+      flex: 1; display: flex; flex-direction: column;
+      justify-content: center; max-height: 100%; overflow: hidden;
+      padding: var(--slide-padding);
+    }
+
+    :root {
+      --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+      --green: #39d353; --green-dim: #26a641; --green-glow: #39d35344;
+      --cyan: #79c0ff; --yellow: #e3b341; --red: #f85149; --purple: #bc8cff; --orange: #ffa657;
+      --text: #e6edf3; --text-dim: #8b949e; --border: #30363d;
+
+      --title-size: clamp(1.4rem, 4.5vw, 3.2rem);
+      --h2-size:    clamp(1.05rem, 2.8vw, 1.9rem);
+      --h3-size:    clamp(0.9rem, 2.2vw, 1.4rem);
+      --body-size:  clamp(0.7rem, 1.35vw, 1rem);
+      --small-size: clamp(0.6rem, 0.95vw, 0.82rem);
+      --code-size:  clamp(0.62rem, 1.1vw, 0.84rem);
+      --slide-padding: clamp(1.25rem, 4.5vw, 4.5rem);
+      --content-gap:   clamp(0.5rem, 1.8vw, 1.75rem);
+      --element-gap:   clamp(0.3rem, 0.9vw, 0.9rem);
+    }
+
+    body { background: var(--bg); color: var(--text); }
+
+    .slide::before {
+      content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 10;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+    }
+    .slide::after {
+      content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+      background-image: linear-gradient(rgba(57,211,83,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(57,211,83,0.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    .slide-content { z-index: 1; }
+
+    .slide-tag {
+      position: absolute; top: clamp(0.75rem,2vh,1.5rem); right: clamp(1rem,3vw,2rem);
+      font-size: var(--small-size); color: var(--text-dim); z-index: 20;
+    }
+    .slide-tag span { color: var(--green); }
+
+    #nav {
+      position: fixed; right: clamp(0.5rem,1.5vw,1.25rem); top: 50%;
+      transform: translateY(-50%); display: flex; flex-direction: column;
+      gap: clamp(0.3rem,0.8vh,0.55rem); z-index: 100;
+    }
+    .dot { width:clamp(5px,0.5vw,8px); height:clamp(5px,0.5vw,8px); border-radius:50%; background:var(--border); cursor:pointer; transition:background 0.3s,box-shadow 0.3s; border:none; }
+    .dot.active { background:var(--green); box-shadow:0 0 8px var(--green-glow); }
+
+    .kbd-hint { position:fixed; bottom:clamp(0.5rem,2vh,1.25rem); left:50%; transform:translateX(-50%); font-size:var(--small-size); color:var(--text-dim); z-index:100; }
+
+    .reveal { opacity:0; transform:translateY(14px); transition:opacity 0.45s ease,transform 0.45s ease; }
+    .reveal.in { opacity:1; transform:none; }
+    .reveal-delay-1{transition-delay:0.08s} .reveal-delay-2{transition-delay:0.16s}
+    .reveal-delay-3{transition-delay:0.24s} .reveal-delay-4{transition-delay:0.32s}
+    .reveal-delay-5{transition-delay:0.40s} .reveal-delay-6{transition-delay:0.48s}
+
+    @keyframes blink      { 0%,100%{opacity:1} 50%{opacity:0} }
+    @keyframes glow-pulse { 0%,100%{box-shadow:0 0 10px var(--green-glow)} 50%{box-shadow:0 0 22px var(--green),0 0 36px var(--green-glow)} }
+    @keyframes lineGrow   { from{width:0} to{width:100%} }
+    @keyframes flowDown   { 0%{opacity:0;transform:translateY(-4px)} 100%{opacity:1;transform:none} }
+
+    .section-label { font-size:var(--small-size); color:var(--green); letter-spacing:0.12em; text-transform:uppercase; margin-bottom:var(--element-gap); }
+    .slide-heading  { font-size:var(--h2-size); font-weight:700; color:var(--text); margin-bottom:var(--content-gap); }
+    .slide-heading em { font-style:normal; color:var(--green); }
+
+    .orb { position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none; z-index:0; }
+    .orb-a { width:min(35vw,380px); height:min(35vw,380px); background:radial-gradient(circle,rgba(57,211,83,0.10) 0%,transparent 70%); top:-8%; right:-4%; }
+    .orb-b { width:min(28vw,280px); height:min(28vw,280px); background:radial-gradient(circle,rgba(121,192,255,0.07) 0%,transparent 70%); bottom:4%; left:4%; }
+
+    .terminal-win { background:var(--bg2); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+    .terminal-bar { display:flex; align-items:center; gap:6px; padding:clamp(0.28rem,0.9vh,0.55rem) clamp(0.6rem,1.5vw,1rem); background:var(--bg3); border-bottom:1px solid var(--border); }
+    .tbar-dot { width:clamp(7px,0.7vw,10px); height:clamp(7px,0.7vw,10px); border-radius:50%; }
+    .tbar-dot:nth-child(1){background:#ff5f57} .tbar-dot:nth-child(2){background:#ffbd2e} .tbar-dot:nth-child(3){background:#28ca41}
+    .tbar-title { margin:0 auto; font-size:var(--small-size); color:var(--text-dim); }
+    .terminal-body { padding:clamp(0.5rem,1.8vh,1.1rem) clamp(0.7rem,2vw,1.3rem); font-size:var(--code-size); line-height:1.65; }
+    .prompt::before { content:'$ '; color:var(--green); font-weight:600; }
+    .comment{color:var(--text-dim)} .out{color:var(--cyan)} .hl{color:var(--green);font-weight:600}
+    .kw{color:var(--yellow)} .err{color:var(--red)} .str{color:var(--orange)}
+    .cursor { display:inline-block; width:0.55em; height:1.1em; background:var(--green); vertical-align:text-bottom; margin-left:2px; animation:blink 1.2s step-end infinite; }
+
+    /* ==========================================
+       SLIDE 1: TITLE
+       ========================================== */
+    .title-box { display:flex; flex-direction:column; gap:var(--content-gap); max-width:min(90vw,860px); }
+    .slide-label { font-size:var(--small-size); color:var(--green); letter-spacing:0.15em; text-transform:uppercase; }
+    .main-title { font-size:var(--title-size); font-weight:700; line-height:1.1; color:var(--text); }
+    .main-title em { font-style:normal; color:var(--green); text-shadow:0 0 18px var(--green-glow); }
+    .subtitle { font-size:var(--h3-size); color:var(--text-dim); font-weight:300; }
+    .title-sep { height:2px; background:var(--green); box-shadow:0 0 8px var(--green-glow); animation:lineGrow 0.8s ease forwards 0.4s; width:0; max-width:clamp(40px,8vw,80px); }
+    .tag-row { display:flex; gap:0.5em; flex-wrap:wrap; }
+    .tag { padding:0.25em 0.65em; border-radius:4px; font-size:var(--small-size); font-weight:600; border:1px solid; background:transparent; }
+    .tag-green  { color:var(--green);  border-color:var(--green-dim); }
+    .tag-orange { color:var(--orange); border-color:rgba(255,166,87,0.4); }
+    .tag-cyan   { color:var(--cyan);   border-color:rgba(121,192,255,0.4); }
+
+    /* ==========================================
+       SLIDE 2: 問題 vs 解決策
+       ========================================== */
+    .compare-layout { display:grid; grid-template-columns:1fr 1fr; gap:clamp(1rem,3vw,2.5rem); align-items:start; max-width:min(92vw,1060px); }
+    .compare-card { background:var(--bg2); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+    .compare-header { padding:clamp(0.4rem,1.2vh,0.75rem) clamp(0.7rem,2vw,1.1rem); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:0.5em; }
+    .compare-label { font-size:var(--small-size); font-weight:600; }
+    .label-bad  { color:var(--red); }
+    .label-good { color:var(--green); }
+    .compare-body { padding:clamp(0.6rem,1.8vh,1rem) clamp(0.7rem,2vw,1.1rem); font-size:var(--code-size); line-height:1.8; }
+    .route-before { color:var(--text-dim); }
+    .route-before .port { color:var(--yellow); }
+    .route-after  { color:var(--text-dim); }
+    .route-after  .path { color:var(--green); font-weight:600; }
+    .route-arrow  { color:var(--text-dim); margin:0 0.4em; }
+    .route-dest   { color:var(--cyan); }
+    .vs-badge {
+      text-align:center; font-size:var(--h3-size); font-weight:700; color:var(--text-dim);
+      padding:0.2em 0; align-self:center;
+    }
+    .ingress-def {
+      margin-top:var(--content-gap);
+      padding:clamp(0.45rem,1.3vh,0.8rem) clamp(0.7rem,2vw,1.1rem);
+      background:rgba(57,211,83,0.06); border:1px solid rgba(57,211,83,0.3); border-radius:6px;
+      font-size:var(--small-size); color:var(--text-dim); line-height:1.7;
+    }
+    .ingress-def strong { color:var(--green); }
+
+    /* ==========================================
+       SLIDE 3: 全体像（図解）
+       ========================================== */
+    .arch-layout { display:grid; grid-template-columns:1.3fr 1fr; gap:clamp(1rem,3vw,2.5rem); align-items:center; max-width:min(92vw,1060px); }
+
+    .cluster-diagram { background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:clamp(0.8rem,2vw,1.5rem); position:relative; }
+    .cluster-title { position:absolute; top:-0.6em; left:1em; background:var(--bg2); padding:0 0.5em; font-size:var(--small-size); color:var(--text-dim); }
+
+    .arch-external { display:flex; justify-content:center; margin-bottom:0.5em; }
+    .ext-box { padding:0.35em 1em; border:1px solid var(--border); border-radius:4px; font-size:var(--small-size); color:var(--text-dim); background:var(--bg3); }
+
+    .arch-arrow-v { display:flex; justify-content:center; color:var(--text-dim); font-size:var(--small-size); margin:0.3em 0; }
+
+    .ic-box {
+      background:rgba(57,211,83,0.08); border:1px solid var(--green-dim); border-radius:6px;
+      padding:clamp(0.4rem,1.2vh,0.7rem) clamp(0.6rem,1.5vw,1rem); text-align:center;
+      margin-bottom:0.6em; animation:glow-pulse 3s ease-in-out infinite;
+    }
+    .ic-title { font-size:var(--small-size); color:var(--green); font-weight:600; }
+    .ic-sub   { font-size:calc(var(--small-size)*0.9); color:var(--text-dim); margin-top:0.15em; }
+
+    .arch-split { display:grid; grid-template-columns:1fr 1fr; gap:0.5em; }
+    .svc-mini { background:var(--bg3); border:1px solid var(--border); border-radius:5px; padding:clamp(0.35rem,1vh,0.6rem); text-align:center; }
+    .svc-mini-title { font-size:var(--small-size); color:var(--purple); font-weight:600; }
+    .svc-mini-sub   { font-size:calc(var(--small-size)*0.85); color:var(--text-dim); margin-top:0.15em; }
+    .pod-row { display:flex; justify-content:center; gap:0.3em; margin-top:0.3em; }
+    .pod-mini { width:clamp(14px,1.6vw,20px); height:clamp(14px,1.6vw,20px); border-radius:3px; background:rgba(121,192,255,0.15); border:1px solid rgba(121,192,255,0.3); display:flex; align-items:center; justify-content:center; font-size:calc(var(--small-size)*0.7); color:var(--cyan); }
+
+    .ingress-res {
+      margin-top:0.6em; padding:0.35em 0.75em;
+      background:rgba(227,179,65,0.07); border:1px solid rgba(227,179,65,0.3); border-radius:4px;
+      font-size:var(--small-size); color:var(--yellow); text-align:center;
+    }
+
+    .arch-desc { display:flex; flex-direction:column; gap:var(--element-gap); }
+    .arch-desc-item {
+      display:grid; grid-template-columns:auto 1fr; gap:0.7em; align-items:start;
+      padding:clamp(0.45rem,1.3vh,0.8rem) clamp(0.6rem,1.8vw,1rem);
+      background:var(--bg2); border:1px solid var(--border); border-radius:6px;
+    }
+    .abadge { padding:0.2em 0.55em; border-radius:3px; font-size:var(--small-size); font-weight:600; white-space:nowrap; }
+    .ab-green  { background:rgba(57,211,83,0.12);  color:var(--green); }
+    .ab-yellow { background:rgba(227,179,65,0.12); color:var(--yellow); }
+    .ab-purple { background:rgba(188,140,255,0.12);color:var(--purple); }
+    .adesc { font-size:var(--small-size); color:var(--text-dim); line-height:1.6; }
+    .adesc strong { color:var(--text); }
+
+    /* ==========================================
+       SLIDE 4: kind クラスタ再作成 + Ingress Controller
+       ========================================== */
+    .setup-layout { display:grid; grid-template-columns:1fr 1fr; gap:clamp(1rem,3vw,2.5rem); align-items:start; max-width:min(92vw,1060px); }
+
+    .yaml-win { background:var(--bg2); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+    .yaml-bar { display:flex; align-items:center; gap:6px; padding:clamp(0.28rem,0.9vh,0.55rem) clamp(0.6rem,1.5vw,1rem); background:var(--bg3); border-bottom:1px solid var(--border); }
+    .yaml-title { margin:0 auto; font-size:var(--small-size); color:var(--text-dim); }
+    .yaml-body { padding:clamp(0.5rem,1.8vh,1rem) clamp(0.7rem,2vw,1.3rem); font-size:var(--code-size); line-height:1.65; }
+    .y-key   { color:var(--cyan); }
+    .y-val   { color:var(--orange); }
+    .y-str   { color:var(--green); }
+    .y-num   { color:var(--purple); }
+    .y-cmnt  { color:var(--text-dim); }
+
+    .steps-col { display:flex; flex-direction:column; gap:var(--element-gap); }
+    .step-item { display:flex; gap:0.75em; align-items:flex-start; }
+    .step-num  {
+      flex-shrink:0; width:clamp(1.3rem,1.8vw,1.7rem); height:clamp(1.3rem,1.8vw,1.7rem);
+      border-radius:50%; background:var(--bg3); border:1px solid var(--green-dim);
+      display:flex; align-items:center; justify-content:center;
+      font-size:var(--small-size); color:var(--green); font-weight:600;
+    }
+    .step-body { font-size:var(--small-size); color:var(--text-dim); line-height:1.6; }
+    .step-body strong { color:var(--text); }
+    .step-body code { color:var(--cyan); background:var(--bg3); padding:0.1em 0.3em; border-radius:3px; font-size:0.9em; }
+
+    /* ==========================================
+       SLIDE 5: アプリデプロイ + ingress.yaml
+       ========================================== */
+    .deploy-layout { display:grid; grid-template-columns:1fr 1fr; gap:clamp(1rem,3vw,2.5rem); align-items:start; max-width:min(92vw,1060px); }
+    .cmd-block { background:var(--bg2); border:1px solid var(--border); border-radius:6px; overflow:hidden; margin-bottom:var(--element-gap); }
+    .cmd-block-label { padding:0.3em 0.75em; background:var(--bg3); font-size:var(--small-size); color:var(--text-dim); border-bottom:1px solid var(--border); }
+    .cmd-block-body  { padding:clamp(0.4rem,1.2vh,0.7rem) clamp(0.6rem,1.8vw,1rem); font-size:var(--code-size); line-height:1.65; }
+
+    /* ==========================================
+       SLIDE 6: 動作確認 + まとめ
+       ========================================== */
+    .verify-layout { display:grid; grid-template-columns:1fr 1fr; gap:clamp(1rem,3vw,2.5rem); align-items:start; max-width:min(92vw,1060px); }
+
+    .flow-chain { display:flex; flex-direction:column; gap:0.3em; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:clamp(0.6rem,1.8vh,1.1rem) clamp(0.7rem,2vw,1.3rem); }
+    .fc-item { display:flex; align-items:center; gap:0.5em; font-size:var(--small-size); }
+    .fc-item code { color:var(--cyan); background:var(--bg3); padding:0.1em 0.35em; border-radius:3px; }
+    .fc-label { padding:0.15em 0.5em; border-radius:3px; font-size:calc(var(--small-size)*0.9); font-weight:600; }
+    .fcl-client  { background:var(--bg3); color:var(--text-dim); border:1px solid var(--border); }
+    .fcl-ic      { background:rgba(57,211,83,0.1); color:var(--green); }
+    .fcl-svc     { background:rgba(188,140,255,0.1); color:var(--purple); }
+    .fcl-pod     { background:rgba(121,192,255,0.1); color:var(--cyan); }
+    .fc-arrow    { color:var(--text-dim); padding-left:0.5em; }
+    .fc-note     { color:var(--text-dim); font-size:calc(var(--small-size)*0.9); }
+
+    .rewrite-box {
+      margin-top:var(--element-gap);
+      padding:clamp(0.45rem,1.3vh,0.8rem) clamp(0.7rem,2vw,1.1rem);
+      background:rgba(227,179,65,0.05); border:1px solid rgba(227,179,65,0.25); border-radius:6px;
+      font-size:var(--small-size); color:var(--text-dim); line-height:1.7;
+    }
+    .rewrite-box strong { color:var(--yellow); }
+    .rewrite-box code { color:var(--cyan); background:var(--bg3); padding:0.1em 0.3em; border-radius:3px; font-size:0.9em; }
+
+    .check-list  { display:flex; flex-direction:column; gap:var(--element-gap); }
+    .check-item  { display:flex; align-items:flex-start; gap:0.6em; font-size:var(--small-size); color:var(--text-dim); line-height:1.6; }
+    .check-sym   { color:var(--green); flex-shrink:0; }
+    .check-item strong { color:var(--text); }
+
+    .next-box {
+      margin-top:var(--content-gap);
+      padding:clamp(0.5rem,1.5vh,0.9rem) clamp(0.75rem,2vw,1.25rem);
+      background:rgba(57,211,83,0.06); border:1px solid rgba(57,211,83,0.3); border-radius:6px;
+      font-size:var(--small-size); color:var(--text-dim);
+    }
+    .next-box strong { color:var(--green); }
+
+    @media (max-width: 768px) {
+      .compare-layout,.arch-layout,.setup-layout,.deploy-layout,.verify-layout { grid-template-columns:1fr; }
+      .arch-split { grid-template-columns:1fr 1fr; }
+    }
+    @media (max-height: 700px) {
+      :root { --slide-padding:clamp(0.75rem,3vw,2rem); --content-gap:clamp(0.35rem,1.3vw,0.9rem); --h2-size:clamp(1rem,2.8vw,1.7rem); }
+    }
+    @media (max-height: 600px) {
+      :root { --slide-padding:clamp(0.5rem,2.5vw,1.5rem); --content-gap:clamp(0.25rem,1vw,0.7rem); }
+      #nav,.kbd-hint { display:none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *,*::before,*::after { animation-duration:0.01ms!important; transition-duration:0.2s!important; }
+      html { scroll-behavior:auto; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav id="nav" aria-label="スライドナビゲーション">
+    <button class="dot active" onclick="goTo(0)" aria-label="スライド 1"></button>
+    <button class="dot" onclick="goTo(1)" aria-label="スライド 2"></button>
+    <button class="dot" onclick="goTo(2)" aria-label="スライド 3"></button>
+    <button class="dot" onclick="goTo(3)" aria-label="スライド 4"></button>
+    <button class="dot" onclick="goTo(4)" aria-label="スライド 5"></button>
+    <button class="dot" onclick="goTo(5)" aria-label="スライド 6"></button>
+  </nav>
+  <p class="kbd-hint" aria-hidden="true">↑ ↓ / Space / Scroll で移動</p>
+
+  <main>
+
+    <!-- SLIDE 1: TITLE -->
+    <section class="slide" id="s1">
+      <div class="orb orb-a"></div><div class="orb orb-b"></div>
+      <div class="slide-tag"><span>01</span> / 06</div>
+      <div class="slide-content">
+        <div class="title-box">
+          <p class="slide-label reveal">Kubernetes 学習シリーズ</p>
+          <h1 class="main-title reveal reveal-delay-1">Ingress +<br><em>nginx</em> で<br>ルーティング</h1>
+          <div class="title-sep reveal reveal-delay-2"></div>
+          <p class="subtitle reveal reveal-delay-3">1つのエントリポイントから<br>パスベースで複数の Service へ振り分ける</p>
+          <div class="tag-row reveal reveal-delay-4">
+            <span class="tag tag-orange">Ingress Controller</span>
+            <span class="tag tag-green">パスルーティング</span>
+            <span class="tag tag-cyan">nginx</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 2: 問題 vs 解決策 -->
+    <section class="slide" id="s2">
+      <div class="slide-tag"><span>02</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">problem → solution</p>
+        <h2 class="slide-heading reveal reveal-delay-1">Service だけだと<em>何が困るか</em></h2>
+        <div class="compare-layout">
+          <!-- Before: NodePort per app -->
+          <div class="compare-card reveal reveal-delay-2">
+            <div class="compare-header">
+              <span style="color:var(--red)">✗</span>
+              <span class="compare-label label-bad">NodePort でアプリごとにポートが増える</span>
+            </div>
+            <div class="compare-body route-before">
+              <div>クライアント</div>
+              <div>├── :<span class="port">30080</span> <span style="color:var(--text-dim)">→</span> <span style="color:var(--cyan)">Service A (frontend)</span></div>
+              <div>├── :<span class="port">30081</span> <span style="color:var(--text-dim)">→</span> <span style="color:var(--cyan)">Service B (api)</span></div>
+              <div>└── :<span class="port">30082</span> <span style="color:var(--text-dim)">→</span> <span style="color:var(--cyan)">Service C (admin)</span></div>
+              <div style="margin-top:0.5em;color:var(--red);font-size:calc(var(--small-size)*0.95)">
+                ⚠️ アプリが増えるたびにポートも増える<br>
+                ⚠️ ポート番号を覚える必要がある<br>
+                ⚠️ 80/443 で公開できない
+              </div>
+            </div>
+          </div>
+
+          <!-- After: Ingress -->
+          <div class="compare-card reveal reveal-delay-3">
+            <div class="compare-header">
+              <span style="color:var(--green)">✓</span>
+              <span class="compare-label label-good">Ingress でパス・ホスト名ルーティング</span>
+            </div>
+            <div class="compare-body route-after">
+              <div>クライアント</div>
+              <div>└── :<span style="color:var(--yellow)">80</span></div>
+              <div style="padding-left:1.5em">├── <span class="path">/</span>       <span class="route-arrow">→</span> <span class="route-dest">frontend</span></div>
+              <div style="padding-left:1.5em">├── <span class="path">/api</span>    <span class="route-arrow">→</span> <span class="route-dest">api</span></div>
+              <div style="padding-left:1.5em">└── <span class="path">/admin</span>  <span class="route-arrow">→</span> <span class="route-dest">admin</span></div>
+              <div style="margin-top:0.5em;color:var(--green);font-size:calc(var(--small-size)*0.95)">
+                ✓ ポート 80 ひとつで全アプリを公開<br>
+                ✓ パス / ホスト名で直感的にルーティング<br>
+                ✓ TLS も一括管理できる
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ingress-def reveal reveal-delay-4">
+          これを実現するのが <strong>Ingress</strong>。ルーティングルールを定義する Kubernetes リソース。<strong>Ingress Controller</strong>（今回は nginx）が実際にトラフィックを処理する。
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 3: 全体像（図解） -->
+    <section class="slide" id="s3">
+      <div class="slide-tag"><span>03</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">architecture</p>
+        <h2 class="slide-heading reveal reveal-delay-1">Ingress の<em>全体像</em></h2>
+        <div class="arch-layout">
+          <!-- Left: cluster diagram -->
+          <div class="reveal reveal-delay-2">
+            <div class="cluster-diagram">
+              <span class="cluster-title">クラスタ</span>
+              <!-- External client -->
+              <div class="arch-external">
+                <div class="ext-box">クライアント :80</div>
+              </div>
+              <div class="arch-arrow-v">↓</div>
+              <!-- Ingress Controller -->
+              <div class="ic-box">
+                <div class="ic-title">Ingress Controller</div>
+                <div class="ic-sub">nginx が動いている Pod</div>
+              </div>
+              <div class="arch-arrow-v" style="font-size:var(--small-size)">↓ Ingress ルールを読んで振り分け</div>
+              <!-- Services -->
+              <div class="arch-split">
+                <div>
+                  <div class="svc-mini">
+                    <div class="svc-mini-title">Service A</div>
+                    <div class="svc-mini-sub">/ → frontend</div>
+                  </div>
+                  <div class="arch-arrow-v" style="font-size:var(--small-size)">↓</div>
+                  <div class="pod-row">
+                    <div class="pod-mini">P</div>
+                    <div class="pod-mini">P</div>
+                  </div>
+                </div>
+                <div>
+                  <div class="svc-mini">
+                    <div class="svc-mini-title">Service B</div>
+                    <div class="svc-mini-sub">/api → api</div>
+                  </div>
+                  <div class="arch-arrow-v" style="font-size:var(--small-size)">↓</div>
+                  <div class="pod-row">
+                    <div class="pod-mini">P</div>
+                    <div class="pod-mini">P</div>
+                  </div>
+                </div>
+              </div>
+              <!-- Ingress resource -->
+              <div class="ingress-res">
+                ↑ Ingress リソース（ルーティングルール定義）
+              </div>
+            </div>
+          </div>
+          <!-- Right: descriptions -->
+          <div class="arch-desc">
+            <div class="arch-desc-item reveal reveal-delay-3">
+              <span class="abadge ab-green">Ingress Controller</span>
+              <div class="adesc">ルーティングを<strong>実際に処理</strong>するコンポーネント。今回は nginx を使う。クラスタに1台だけデプロイする。</div>
+            </div>
+            <div class="arch-desc-item reveal reveal-delay-4">
+              <span class="abadge ab-yellow">Ingress リソース</span>
+              <div class="adesc">「このパスはこの Service へ」という<strong>ルールの定義</strong>。YAML で記述し kubectl apply する。</div>
+            </div>
+            <div class="arch-desc-item reveal reveal-delay-5">
+              <span class="abadge ab-purple">Service</span>
+              <div class="adesc">Ingress は Service に振り分ける。Serviceが実際のPodへロードバランシングする。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 4: クラスタ再作成 + Ingress Controller -->
+    <section class="slide" id="s4">
+      <div class="slide-tag"><span>04</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">setup</p>
+        <h2 class="slide-heading reveal reveal-delay-1">kind クラスタ再作成 +<br><em>Ingress Controller</em> インストール</h2>
+        <div class="setup-layout">
+          <!-- Left: kind-config.yaml -->
+          <div class="reveal reveal-delay-2">
+            <div class="yaml-win">
+              <div class="yaml-bar">
+                <div class="tbar-dot"></div><div class="tbar-dot"></div><div class="tbar-dot"></div>
+                <div class="yaml-title">kind-config.yaml</div>
+              </div>
+              <div class="yaml-body">
+                <div><span class="y-key">kind</span>: <span class="y-str">Cluster</span></div>
+                <div><span class="y-key">apiVersion</span>: <span class="y-str">kind.x-k8s.io/v1alpha4</span></div>
+                <div><span class="y-key">nodes</span>:</div>
+                <div>&nbsp;&nbsp;- <span class="y-key">role</span>: <span class="y-str">control-plane</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">kubeadmConfigPatches</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="y-str">|</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">nodeRegistration</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">kubeletExtraArgs</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">node-labels</span>: <span class="y-str">"ingress-ready=true"</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">extraPortMappings</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="y-key">containerPort</span>: <span class="y-num">80</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">hostPort</span>: <span class="y-num">80</span>  <span class="y-cmnt"># ← ポイント</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="y-key">containerPort</span>: <span class="y-num">443</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">hostPort</span>: <span class="y-num">443</span></div>
+              </div>
+            </div>
+          </div>
+          <!-- Right: steps -->
+          <div class="steps-col">
+            <div class="step-item reveal reveal-delay-3">
+              <div class="step-num">1</div>
+              <div class="step-body">
+                <strong>既存クラスタを削除</strong><br>
+                <code>kind delete cluster --name mycluster</code>
+              </div>
+            </div>
+            <div class="step-item reveal reveal-delay-3">
+              <div class="step-num">2</div>
+              <div class="step-body">
+                <strong>設定ファイルでクラスタを再作成</strong><br>
+                <code>kind create cluster --name mycluster --config kind-config.yaml</code><br>
+                <span style="color:var(--text-dim)">ポート 80/443 をホストに公開するのがポイント</span>
+              </div>
+            </div>
+            <div class="step-item reveal reveal-delay-4">
+              <div class="step-num">3</div>
+              <div class="step-body">
+                <strong>nginx Ingress Controller をインストール</strong><br>
+                <code>kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml</code>
+              </div>
+            </div>
+            <div class="step-item reveal reveal-delay-5">
+              <div class="step-num">4</div>
+              <div class="step-body">
+                <strong>起動を待つ</strong><br>
+                <code>kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=90s</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 5: アプリデプロイ + ingress.yaml -->
+    <section class="slide" id="s5">
+      <div class="slide-tag"><span>05</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">deploy</p>
+        <h2 class="slide-heading reveal reveal-delay-1">アプリデプロイ +<br><em>Ingress リソース</em>作成</h2>
+        <div class="deploy-layout">
+          <!-- Left: app deploy commands -->
+          <div class="reveal reveal-delay-2">
+            <div class="cmd-block">
+              <div class="cmd-block-label">2つのアプリをデプロイ</div>
+              <div class="cmd-block-body">
+                <div class="comment"># frontend: nginx のデフォルトページ</div>
+                <div class="prompt"><span class="kw">kubectl create deployment</span> frontend <span class="kw">--image</span>=nginx</div>
+                <div class="prompt"><span class="kw">kubectl expose deployment</span> frontend <span class="kw">--port</span>=80</div>
+                <div>&nbsp;</div>
+                <div class="comment"># api: httpbin で JSON を返す</div>
+                <div class="prompt"><span class="kw">kubectl create deployment</span> api <span class="kw">--image</span>=kennethreitz/httpbin</div>
+                <div class="prompt"><span class="kw">kubectl expose deployment</span> api <span class="kw">--port</span>=80</div>
+              </div>
+            </div>
+            <div class="terminal-win" style="margin-top:var(--element-gap)">
+              <div class="terminal-bar">
+                <div class="tbar-dot"></div><div class="tbar-dot"></div><div class="tbar-dot"></div>
+                <div class="tbar-title">動作確認</div>
+              </div>
+              <div class="terminal-body">
+                <div class="comment"># / → frontend</div>
+                <div class="prompt">curl localhost/</div>
+                <div class="out">Welcome to nginx!</div>
+                <div class="comment"># /api → api (httpbin)</div>
+                <div class="prompt">curl localhost/api/get</div>
+                <div class="out">{<span class="hl">"url"</span>: "http://localhost/api/get"}</div>
+                <div class="prompt"><span class="cursor"></span></div>
+              </div>
+            </div>
+          </div>
+          <!-- Right: ingress.yaml -->
+          <div class="reveal reveal-delay-3">
+            <div class="yaml-win">
+              <div class="yaml-bar">
+                <div class="tbar-dot"></div><div class="tbar-dot"></div><div class="tbar-dot"></div>
+                <div class="yaml-title">ingress.yaml</div>
+              </div>
+              <div class="yaml-body">
+                <div><span class="y-key">apiVersion</span>: <span class="y-str">networking.k8s.io/v1</span></div>
+                <div><span class="y-key">kind</span>: <span class="y-str">Ingress</span></div>
+                <div><span class="y-key">metadata</span>:</div>
+                <div>&nbsp;&nbsp;<span class="y-key">name</span>: <span class="y-str">my-ingress</span></div>
+                <div>&nbsp;&nbsp;<span class="y-key">annotations</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">nginx.ingress.kubernetes.io/rewrite-target</span>: <span class="y-str">/</span></div>
+                <div><span class="y-key">spec</span>:</div>
+                <div>&nbsp;&nbsp;<span class="y-key">ingressClassName</span>: <span class="y-str">nginx</span></div>
+                <div>&nbsp;&nbsp;<span class="y-key">rules</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;- <span class="y-key">http</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">paths</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="y-key">path</span>: <span class="y-str">/</span>&nbsp;&nbsp;<span class="y-cmnt"># → frontend</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">pathType</span>: <span class="y-str">Prefix</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">backend</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">service</span>: {<span class="y-key">name</span>: <span class="y-str">frontend</span>, <span class="y-key">port</span>: {<span class="y-key">number</span>: <span class="y-num">80</span>}}</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- <span class="y-key">path</span>: <span class="y-str">/api</span>&nbsp;<span class="y-cmnt"># → api</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">pathType</span>: <span class="y-str">Prefix</span></div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">backend</span>:</div>
+                <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="y-key">service</span>: {<span class="y-key">name</span>: <span class="y-str">api</span>, <span class="y-key">port</span>: {<span class="y-key">number</span>: <span class="y-num">80</span>}}</div>
+              </div>
+            </div>
+            <div style="margin-top:0.5em;font-size:var(--small-size);color:var(--text-dim);">
+              <span class="prompt" style="display:inline"></span>
+              <span class="kw">kubectl apply</span> -f ingress.yaml
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 6: 動作確認 + まとめ -->
+    <section class="slide" id="s6">
+      <div class="slide-tag"><span>06</span> / 06</div>
+      <div class="slide-content">
+        <p class="section-label reveal">verify & summary</p>
+        <h2 class="slide-heading reveal reveal-delay-1">ルーティングの<em>仕組みまとめ</em></h2>
+        <div class="verify-layout">
+          <!-- Left: flow chain -->
+          <div class="reveal reveal-delay-2">
+            <p style="font-size:var(--small-size);color:var(--text-dim);margin-bottom:0.5em">/api/get へのリクエストの流れ</p>
+            <div class="flow-chain">
+              <div class="fc-item">
+                <span class="fc-label fcl-client">クライアント</span>
+                <code>curl localhost/api/get</code>
+              </div>
+              <div class="fc-arrow">↓</div>
+              <div class="fc-item">
+                <span class="fc-label fcl-ic">Ingress Controller</span>
+                <span class="fc-note">/api にマッチするルールを検索</span>
+              </div>
+              <div class="fc-arrow">↓ /api → Service: api</div>
+              <div class="fc-item">
+                <span class="fc-label fcl-svc">Service: api</span>
+                <span class="fc-note">ClusterIP でPodへ</span>
+              </div>
+              <div class="fc-arrow">↓</div>
+              <div class="fc-item">
+                <span class="fc-label fcl-pod">Pod (httpbin)</span>
+                <span class="fc-note">レスポンスを返す</span>
+              </div>
+            </div>
+            <div class="rewrite-box">
+              <strong>💡 rewrite-target: /</strong> アノテーション<br>
+              <code>/api/get</code> → <code>/get</code> に書き換えてアプリへ届ける。<br>
+              プレフィックスをアプリ側に意識させないための設定。
+            </div>
+          </div>
+          <!-- Right: checklist + next -->
+          <div>
+            <p style="font-size:var(--small-size);color:var(--text-dim);margin-bottom:0.5em">学んだこと</p>
+            <div class="check-list reveal reveal-delay-3">
+              <div class="check-item">
+                <span class="check-sym">✓</span>
+                <span>Service の NodePort 方式ではポートが増え続けるという<strong>課題</strong>を理解した</span>
+              </div>
+              <div class="check-item">
+                <span class="check-sym">✓</span>
+                <span><strong>Ingress Controller</strong>（nginx）がルーティングを処理する実体</span>
+              </div>
+              <div class="check-item">
+                <span class="check-sym">✓</span>
+                <span><strong>Ingress リソース</strong>でパスとService の対応を YAML で定義する</span>
+              </div>
+              <div class="check-item">
+                <span class="check-sym">✓</span>
+                <span>kind では <strong>extraPortMappings</strong> で80番をホストに公開する必要がある</span>
+              </div>
+              <div class="check-item">
+                <span class="check-sym">✓</span>
+                <span><code>rewrite-target</code> アノテーションでパスプレフィックスを除去できる</span>
+              </div>
+            </div>
+            <div class="next-box reveal reveal-delay-4">
+              <strong>次のステップ →</strong><br>
+              04. 実際の API をデプロイする — Docker イメージのビルドから kind へのデプロイまで
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const dots   = Array.from(document.querySelectorAll('.dot'));
+    let current = 0, isScrolling = false;
+
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+          const idx = slides.indexOf(entry.target);
+          if (idx !== -1) { current = idx; dots.forEach((d,i) => d.classList.toggle('active', i===idx)); }
+        }
+      });
+    }, { threshold: 0.5 });
+
+    slides.forEach(s => observer.observe(s));
+    slides[0].querySelectorAll('.reveal').forEach(el => el.classList.add('in'));
+
+    function goTo(idx) {
+      idx = Math.max(0, Math.min(slides.length-1, idx));
+      slides[idx].scrollIntoView({ behavior: 'smooth' });
+      current = idx;
+    }
+    document.addEventListener('keydown', e => {
+      if (e.key==='ArrowDown'||e.key===' '||e.key==='PageDown') { e.preventDefault(); goTo(current+1); }
+      else if (e.key==='ArrowUp'||e.key==='PageUp')             { e.preventDefault(); goTo(current-1); }
+      else if (e.key==='Home') { e.preventDefault(); goTo(0); }
+      else if (e.key==='End')  { e.preventDefault(); goTo(slides.length-1); }
+    });
+    document.addEventListener('wheel', e => {
+      if (isScrolling) return;
+      isScrolling = true;
+      goTo(e.deltaY > 0 ? current+1 : current-1);
+      setTimeout(() => { isScrolling = false; }, 800);
+    }, { passive: true });
+    let ty = 0;
+    document.addEventListener('touchstart', e => { ty = e.touches[0].clientY; }, { passive: true });
+    document.addEventListener('touchend',   e => {
+      const dy = ty - e.changedTouches[0].clientY;
+      if (Math.abs(dy) > 40) goTo(dy > 0 ? current+1 : current-1);
+    }, { passive: true });
+  </script>
+</body>
+</html>
