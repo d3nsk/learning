@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'slides/**'
+      - 'kubernetes/slides/**'
 
 permissions:
   contents: write
@@ -20,5 +20,5 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./slides
+          publish_dir: ./kubernetes/slides
           publish_branch: gh-pages
